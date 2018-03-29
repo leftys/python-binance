@@ -4,12 +4,13 @@ import hashlib
 import hmac
 import requests
 import time
+from abc import ABC, abstractmethod
 from operator import itemgetter
 from .helpers import date_to_milliseconds, interval_to_milliseconds
 from .exceptions import BinanceAPIException, BinanceRequestException, BinanceWithdrawException
 
 
-class Client(object):
+class BaseClient(ABC):
 
     API_URL = 'https://api.binance.{}/api'
     WITHDRAW_API_URL = 'https://api.binance.{}/wapi'
@@ -99,18 +100,18 @@ class Client(object):
         self.API_SECRET = api_secret
         self.session = self._init_session()
         self._requests_params = requests_params
-        self.response = None
+        # self.response = None
 
-        # init DNS and SSL cert
-        self.ping()
+    def _get_headers(self):
+        return {
+            'Accept': 'application/json',
+            'User-Agent': 'binance/python',
+            'X-MBX-APIKEY': self.API_KEY
+        }
 
+    @abstractmethod
     def _init_session(self):
-
-        session = requests.session()
-        session.headers.update({'Accept': 'application/json',
-                                'User-Agent': 'binance/python',
-                                'X-MBX-APIKEY': self.API_KEY})
-        return session
+        pass
 
     def _create_api_uri(self, path, signed=True, version=PUBLIC_API_VERSION):
         v = self.PRIVATE_API_VERSION if signed else version
@@ -155,7 +156,7 @@ class Client(object):
             params.append(('signature', data['signature']))
         return params
 
-    def _request(self, method, uri, signed, force_params=False, **kwargs):
+    def _get_request_kwargs(self, method, signed, force_params=False, **kwargs):
 
         # set default requests timeout
         kwargs['timeout'] = 10
@@ -176,7 +177,7 @@ class Client(object):
 
         if signed:
             # generate signature
-            kwargs['data']['timestamp'] = int(time.time() * 1000)
+            kwargs['data']['timestamp'] = str(int(time.time() * 1000))
             kwargs['data']['signature'] = self._generate_signature(kwargs['data'])
 
         # sort get and post params to match signature order
@@ -193,56 +194,75 @@ class Client(object):
             kwargs['params'] = '&'.join('%s=%s' % (data[0], data[1]) for data in kwargs['data'])
             del(kwargs['data'])
 
-        self.response = getattr(self.session, method)(uri, **kwargs)
-        return self._handle_response()
+        return kwargs
 
-    def _request_api(self, method, path, signed=False, version=PUBLIC_API_VERSION, **kwargs):
-        uri = self._create_api_uri(path, signed, version)
+class Client(BaseClient):
 
-        return self._request(method, uri, signed, **kwargs)
+    def __init__(self, api_key, api_secret, requests_params=None):
 
-    def _request_withdraw_api(self, method, path, signed=False, **kwargs):
-        uri = self._create_withdraw_api_uri(path)
+        super().__init__(api_key, api_secret, requests_params)
 
-        return self._request(method, uri, signed, True, **kwargs)
+        # init DNS and SSL cert
+        self.ping()
 
-    def _request_margin_api(self, method, path, signed=False, **kwargs):
-        uri = self._create_margin_api_uri(path)
+    def _init_session(self):
 
-        return self._request(method, uri, signed, **kwargs)
+        headers = self._get_headers()
 
-    def _request_website(self, method, path, signed=False, **kwargs):
-        uri = self._create_website_uri(path)
+        session = requests.session()
+        session.headers.update(headers)
+        return session
 
-        return self._request(method, uri, signed, **kwargs)
+    def _request(self, method, uri, signed, force_params=False, **kwargs):
 
-    def _request_futures_api(self, method, path, signed=False, **kwargs):
-        uri = self._create_futures_api_uri(path)
+        kwargs = self._get_request_kwargs(method, signed, force_params, **kwargs)
 
-        return self._request(method, uri, signed, True, **kwargs)
+        response = getattr(self.session, method)(uri, **kwargs)
+        return self._handle_response(response)
 
-    def _handle_response(self):
+    def _handle_response(self, response):
         """Internal helper for handling API responses from the Binance server.
         Raises the appropriate exceptions when necessary; otherwise, returns the
         response.
         """
-        if not str(self.response.status_code).startswith('2'):
-            raise BinanceAPIException(self.response)
+        if not str(response.status_code).startswith('2'):
+            raise BinanceAPIException(response, response.status_code, response.text)
         try:
-            return self.response.json()
+            return response.json()
         except ValueError:
-            raise BinanceRequestException('Invalid Response: %s' % self.response.text)
+            raise BinanceRequestException('Invalid Response: %s' % response.text)
 
-    def _get(self, path, signed=False, version=PUBLIC_API_VERSION, **kwargs):
+
+    def _request_api(self, method, path, signed=False, version=BaseClient.PUBLIC_API_VERSION, **kwargs):
+        uri = self._create_api_uri(path, signed, version)
+        return self._request(method, uri, signed, **kwargs)
+
+    def _request_withdraw_api(self, method, path, signed=False, **kwargs):
+        uri = self._create_withdraw_api_uri(path)
+        return self._request(method, uri, signed, True, **kwargs)
+
+    def _request_website(self, method, path, signed=False, **kwargs):
+        uri = self._create_website_uri(path)
+        return self._request(method, uri, signed, **kwargs)
+
+    def _request_margin_api(self, method, path, signed=False, **kwargs):
+        uri = self._create_margin_api_uri(path)
+        return self._request(method, uri, signed, **kwargs)
+
+    def _request_futures_api(self, method, path, signed=False, **kwargs):
+        uri = self._create_futures_api_uri(path)
+        return self._request(method, uri, signed, True, **kwargs)
+
+    def _get(self, path, signed=False, version=BaseClient.PUBLIC_API_VERSION, **kwargs):
         return self._request_api('get', path, signed, version, **kwargs)
 
-    def _post(self, path, signed=False, version=PUBLIC_API_VERSION, **kwargs):
+    def _post(self, path, signed=False, version=BaseClient.PUBLIC_API_VERSION, **kwargs):
         return self._request_api('post', path, signed, version, **kwargs)
 
-    def _put(self, path, signed=False, version=PUBLIC_API_VERSION, **kwargs):
+    def _put(self, path, signed=False, version=BaseClient.PUBLIC_API_VERSION, **kwargs):
         return self._request_api('put', path, signed, version, **kwargs)
 
-    def _delete(self, path, signed=False, version=PUBLIC_API_VERSION, **kwargs):
+    def _delete(self, path, signed=False, version=BaseClient.PUBLIC_API_VERSION, **kwargs):
         return self._request_api('delete', path, signed, version, **kwargs)
 
     # Exchange Endpoints
@@ -366,7 +386,7 @@ class Client(object):
 
         """
 
-        res = self._get('exchangeInfo')
+        res = self.get_exchange_info()
 
         for item in res['symbols']:
             if item['symbol'] == symbol.upper():
@@ -1200,7 +1220,7 @@ class Client(object):
         """
         return self._post('order', True, data=params)
 
-    def order_limit(self, timeInForce=TIME_IN_FORCE_GTC, **params):
+    def order_limit(self, timeInForce=BaseClient.TIME_IN_FORCE_GTC, **params):
         """Send in a new limit order
 
         Any order with an icebergQty MUST have timeInForce set to GTC.
@@ -1237,7 +1257,7 @@ class Client(object):
         })
         return self.create_order(**params)
 
-    def order_limit_buy(self, timeInForce=TIME_IN_FORCE_GTC, **params):
+    def order_limit_buy(self, timeInForce=BaseClient.TIME_IN_FORCE_GTC, **params):
         """Send in a new limit buy order
 
         Any order with an icebergQty MUST have timeInForce set to GTC.
@@ -1273,7 +1293,7 @@ class Client(object):
         })
         return self.order_limit(timeInForce=timeInForce, **params)
 
-    def order_limit_sell(self, timeInForce=TIME_IN_FORCE_GTC, **params):
+    def order_limit_sell(self, timeInForce=BaseClient.TIME_IN_FORCE_GTC, **params):
         """Send in a new limit sell order
 
         :param symbol: required
