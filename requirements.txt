@@ -7,3 +7,4 @@ requests==2.22.0
 service-identity==17.0.0
 Twisted==19.7.0
 websockets==3.4
+#chardet?
