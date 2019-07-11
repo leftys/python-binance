@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from random import random
 import websockets as ws
 
 from .client import Client
@@ -9,8 +10,10 @@ from .client import Client
 class ReconnectingWebsocket:
 
     STREAM_URL = 'wss://stream.binance.com:9443/'
-    MAX_RECONNECTS = 3
+    MAX_RECONNECTS = 5
+    MAX_RECONNECT_SECONDS = 60
     MIN_RECONNECT_WAIT = 0.1
+    TIMEOUT = 10
 
     def __init__(self, loop, path, coro, prefix='ws/'):
         self._loop = loop
@@ -19,55 +22,72 @@ class ReconnectingWebsocket:
         self._coro = coro
         self._prefix = prefix
         self._reconnects = 0
-        self._reconnect_wait = 0.1
         self._conn = None
+        self._socket = None
 
         self._connect()
 
     def _connect(self):
-        self._conn = asyncio.ensure_future(self._run())
+        self._conn = asyncio.ensure_future(self._run(), loop=self._loop)
 
     async def _run(self):
 
         keep_waiting = True
 
-        try:
-            ws_url = self.STREAM_URL + self._prefix + self._path
-            async with ws.connect(ws_url) as socket:
-                self._reconnect_wait = self.MIN_RECONNECT_WAIT
-                while keep_waiting:
-                    evt = await socket.recv()
+        ws_url = self.STREAM_URL + self._prefix + self._path
+        async with ws.connect(ws_url) as socket:
+            self._socket = socket
+            self._reconnects = 0
 
+            try:
+                while keep_waiting:
                     try:
-                        evt_obj = json.loads(evt)
-                    except ValueError:
-                        pass
+                        evt = await asyncio.wait_for(self._socket.recv(), timeout=self.TIMEOUT)
+                    except asyncio.TimeoutError:
+                        self._log.debug("no message in {} seconds".format(self.TIMEOUT))
+                        await self.send_ping()
+                    except asyncio.CancelledError:
+                        self._log.debug("cancelled error")
+                        await self.send_ping()
                     else:
-                        await self._coro(evt_obj)
-        except ws.ConnectionClosed as e:
-            self._log.debug('ws connection closed:{}'.format(e))
-            keep_waiting = False
-            await self._reconnect()
-        except Exception as e:
-            self._log.debug('ws exception:{}'.format(e))
-            keep_waiting = False
-        #    await self._reconnect()
+                        try:
+                            evt_obj = json.loads(evt)
+                        except ValueError:
+                            self._log.debug('error parsing evt json:{}'.format(evt))
+                        else:
+                            await self._coro(evt_obj)
+            except ws.ConnectionClosed as e:
+                self._log.debug('ws connection closed:{}'.format(e))
+                await self._reconnect()
+            except Exception as e:
+                self._log.debug('ws exception:{}'.format(e))
+                await self._reconnect()
+
+    def _get_reconnect_wait(self, attempts: int) -> int:
+        expo = 2 ** attempts
+        return round(random() * min(self.MAX_RECONNECT_SECONDS, expo - 1) + 1)
 
     async def _reconnect(self):
         await self.cancel()
         self._reconnects += 1
         if self._reconnects < self.MAX_RECONNECTS:
 
-            self._log.debug("websocket {} reconnecting {} reconnects left".format(self._path, self.MAX_RECONNECTS - self._reconnects))
-            await asyncio.sleep(self._reconnect_wait)
-            self._reconnect_wait *= 3
+            self._log.debug("websocket {} reconnecting {} reconnects left".format(
+                self._path, self.MAX_RECONNECTS - self._reconnects)
+            )
+            reconnect_wait = self._get_reconnect_wait(self._reconnects)
+            await asyncio.sleep(reconnect_wait)
             self._connect()
         else:
-            # maybe raise an exception
-            pass
+            self._log.error('Max reconnections {} reached:'.format(self.MAX_RECONNECTS))
+
+    async def send_ping(self):
+        if self._socket:
+            await self._socket.ping()
 
     async def cancel(self):
         self._conn.cancel()
+        self._socket = None
 
 
 class BinanceSocketManager:
@@ -91,7 +111,7 @@ class BinanceSocketManager:
         self._listen_keys = {'user': None, 'margin': None}
         self._account_callbacks = {'user': None, 'margin': None}
         self._loop = loop
-
+        self._log = logging.getLogger(__name__)
 
     async def _start_socket(self, path, coro, prefix='ws/'):
         if path in self._conns:
@@ -548,16 +568,21 @@ class BinanceSocketManager:
     def _start_socket_timer(self, socket_type):
         self._timers[socket_type] = self._loop.call_later(self._user_timeout, self._keepalive_user_socket)
 
-    async def _keepalive_account_socket(self, socket_type):
-        if socket_type == 'user':
-            listen_key_func = self._client.stream_get_listen_key
-            callback = self._account_callbacks[socket_type]
-        else:
-            listen_key_func = self._client.margin_stream_get_listen_key
-            callback = self._account_callbacks[socket_type]
-        listen_key = listen_key_func()
-        if listen_key != self._listen_keys[socket_type]:
-            await self._start_account_socket(socket_type, listen_key, callback)
+    def _keepalive_account_socket(self, socket_type):
+
+        async def _run():
+            if socket_type == 'user':
+                listen_key_func = self._client.stream_get_listen_key
+                callback = self._account_callbacks[socket_type]
+            else:
+                listen_key_func = self._client.margin_stream_get_listen_key
+                callback = self._account_callbacks[socket_type]
+            listen_key = listen_key_func()
+            if listen_key != self._listen_keys[socket_type]:
+                await self._start_account_socket(socket_type, listen_key, callback)
+
+        # this allows execution to keep going
+        asyncio.ensure_future(_run())
 
     async def stop_socket(self, conn_key):
         """Stop a websocket given the connection key
