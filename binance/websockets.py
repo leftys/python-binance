@@ -1,5 +1,5 @@
 import asyncio
-import json
+import ujson as json
 import logging
 from random import random
 import websockets as ws

@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import requests
 import time
+import ujson
 from abc import ABC, abstractmethod
 from operator import itemgetter
 
@@ -3719,7 +3720,8 @@ class AsyncClient(BaseClient):
         loop = asyncio.get_event_loop()
         session = aiohttp.ClientSession(
             loop=loop,
-            headers=self._get_headers()
+            headers=self._get_headers(),
+            json_serialize = ujson.dumps,
         )
         return session
 

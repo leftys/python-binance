@@ -26,8 +26,8 @@ setup(
     license='MIT',
     author_email='',
     install_requires=[
-        'requests', 'six', 'pyOpenSSL', 'service-identity', 'dateparser', 'urllib3', 'certifi',
-        'cryptography', 'aiohttp'
+        'requests', 'six', 'pyOpenSSL', 'service-identity', 'dateparser', 'urllib3', 'chardet', 'certifi',
+        'cryptography', 'aiohttp', 'sortedcontainers', 'ujson',
     ],
     keywords='binance exchange rest api bitcoin ethereum btc eth neo',
     classifiers=[
