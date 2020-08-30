@@ -194,7 +194,7 @@ class DepthCacheManager(object):
 
         # wait for some socket responses
         while not len(self._depth_message_buffer):
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.05)
 
     async def _depth_event(self, msg):
         """Handle a depth event
