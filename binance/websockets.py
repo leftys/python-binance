@@ -58,14 +58,18 @@ class ReconnectingWebsocket:
                         else:
                             await self._coro(evt_obj)
             except ws.ConnectionClosed as e:
-                self._log.info('ws connection closed:{!r}'.format(e))
+                self._log.info('ws connection closed: %r', e)
                 await self._reconnect()
             except Exception as e:
-                self._log.info('ws exception:{!r}'.format(e))
+                self._log.info('ws exception: %r', e)
                 await self._reconnect()
 
     def _handle_conn_done(self, task: asyncio.Task):
-        self._log.warning('connection finished with result = {}, reconnecting.', task.result())
+        try:
+            result = task.result()
+        except Exception as ex:
+            result = ex
+        self._log.warning('connection finished with result: %r, reconnecting.', result)
         asyncio.create_task(self._reconnect())
 
     def _get_reconnect_wait(self, attempts: int) -> int:
