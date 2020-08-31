@@ -29,6 +29,7 @@ class ReconnectingWebsocket:
 
     def _connect(self):
         self._conn = asyncio.ensure_future(self._run(), loop=self._loop)
+        self._conn.add_done_callback(self._handle_conn_done)
 
     async def _run(self):
 
@@ -47,21 +48,24 @@ class ReconnectingWebsocket:
                         self._log.debug("no message in {} seconds".format(self.TIMEOUT))
                         await self.send_ping()
                     except asyncio.CancelledError:
-                        self._log.debug("cancelled error")
+                        self._log.info("cancelled error")
                         await self.send_ping()
                     else:
                         try:
                             evt_obj = json.loads(evt)
                         except ValueError:
-                            self._log.debug('error parsing evt json:{}'.format(evt))
+                            self._log.info('error parsing evt json:{}'.format(evt))
                         else:
                             await self._coro(evt_obj)
             except ws.ConnectionClosed as e:
-                self._log.debug('ws connection closed:{}'.format(e))
+                self._log.info('ws connection closed:{!r}'.format(e))
                 await self._reconnect()
             except Exception as e:
-                self._log.debug('ws exception:{}'.format(e))
+                self._log.info('ws exception:{!r}'.format(e))
                 await self._reconnect()
+
+    def _handle_conn_done(self, task: asyncio.Task):
+        self._log.warning('connection finished with result = {}', task.result())
 
     def _get_reconnect_wait(self, attempts: int) -> int:
         expo = 2 ** attempts
@@ -72,7 +76,7 @@ class ReconnectingWebsocket:
         self._reconnects += 1
         if self._reconnects < self.MAX_RECONNECTS:
 
-            self._log.debug("websocket {} reconnecting {} reconnects left".format(
+            self._log.info("websocket {} reconnecting {} reconnects left".format(
                 self._path, self.MAX_RECONNECTS - self._reconnects)
             )
             reconnect_wait = self._get_reconnect_wait(self._reconnects)

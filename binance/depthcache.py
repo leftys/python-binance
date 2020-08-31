@@ -234,13 +234,12 @@ class DepthCacheManager(object):
             # ignore any updates before the initial update id
             return
         if msg['U'] <= self._last_update_id + 1 <= msg['u'] and self._first_update_after_snapshot:
-            pass
+            self._first_update_after_snapshot = False
         elif msg['U'] != self._last_update_id + 1:
             # if not buffered check we get sequential updates
             # otherwise init cache again
             self._logger.warning('Reiniting cache because of non-consequential update id!')
             await self._init_cache()
-        self._first_update_after_snapshot = False
 
         # add any bid or ask values
         for bid in msg['b']:
