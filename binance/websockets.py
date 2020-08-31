@@ -65,7 +65,8 @@ class ReconnectingWebsocket:
                 await self._reconnect()
 
     def _handle_conn_done(self, task: asyncio.Task):
-        self._log.warning('connection finished with result = {}', task.result())
+        self._log.warning('connection finished with result = {}, reconnecting.', task.result())
+        asyncio.create_task(self._reconnect())
 
     def _get_reconnect_wait(self, attempts: int) -> int:
         expo = 2 ** attempts
