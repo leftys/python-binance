@@ -146,7 +146,6 @@ class DepthCacheManager(object):
         self._bm = bm
         self._depth_cache = DepthCache(self._symbol)
         self._refresh_interval = refresh_interval
-        self._init_called = False
         self._first_update_after_snapshot = True
         self._logger = logging.getLogger(__name__)
 
@@ -160,8 +159,6 @@ class DepthCacheManager(object):
 
         :return:
         """
-        assert not self._init_called
-        self._init_called = True
         self._last_update_id = None
         self._depth_message_buffer = []
 
