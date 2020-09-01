@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import ujson as json
 import logging
 from random import random
@@ -98,6 +99,8 @@ class ReconnectingWebsocket:
 
     async def cancel(self):
         self._conn.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await self._conn
         self._socket = None
 
 
