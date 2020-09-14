@@ -18,7 +18,7 @@ class BinanceAPIException(Exception):
         self.request = getattr(response, 'request', None)
 
     def __str__(self):  # pragma: no cover
-        return 'APIError(code=%s): %s' % (self.code, self.message)
+        return 'APIError(code=%s): %s; Request: %s' % (self.code, self.message, self.request)
 
 
 class BinanceRequestException(Exception):
