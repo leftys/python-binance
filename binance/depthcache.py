@@ -148,6 +148,7 @@ class DepthCacheManager(object):
         self._refresh_interval = refresh_interval
         self._first_update_after_snapshot = True
         self._logger = logging.getLogger(__name__)
+        self.last_depth_message = None
 
         await self._start_socket()
         await self._init_cache()
@@ -205,7 +206,7 @@ class DepthCacheManager(object):
         :return:
 
         """
-
+        self.last_depth_message = msg
         if 'e' in msg and msg['e'] == 'error':
             # close the socket
             await self.close()
