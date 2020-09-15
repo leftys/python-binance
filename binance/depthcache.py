@@ -274,3 +274,4 @@ class DepthCacheManager(object):
         await self._bm.close()
         await asyncio.sleep(1)
         self._depth_cache = None
+        self.last_depth_message = None
