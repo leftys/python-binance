@@ -1,5 +1,7 @@
 # coding=utf-8
 import ujson as json
+import requests
+import aiohttp
 
 
 class BinanceAPIException(Exception):
@@ -17,8 +19,15 @@ class BinanceAPIException(Exception):
         self.response = response
         self.request = getattr(response, 'request', None)
 
+    @staticmethod
+    def _format_request(request) -> str:
+        if isinstance(request, requests.PreparedRequest):
+            return f'{request.method} {request.url}: {request.body}'
+        else:
+            return repr(request)
+
     def __str__(self):  # pragma: no cover
-        return 'APIError(code=%s): %s; Request: %s' % (self.code, self.message, self.request)
+        return 'APIError(code=%s): %s; Request: %s' % (self.code, self.message, self._format_request(self.request))
 
 
 class BinanceRequestException(Exception):
