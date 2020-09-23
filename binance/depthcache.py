@@ -31,7 +31,10 @@ class DepthCache(object):
         """
         self._bids[float(bid[0])] = float(bid[1])
         if bid[1] == "0.00000000":
-            del self._bids[float(bid[0])]
+            try:
+                del self._bids[float(bid[0])]
+            except KeyError:
+                pass
 
     def add_ask(self, ask):
         """Add an ask to the cache
@@ -42,7 +45,10 @@ class DepthCache(object):
         """
         self._asks[float(ask[0])] = float(ask[1])
         if ask[1] == "0.00000000":
-            del self._asks[float(ask[0])]
+            try:
+                del self._asks[float(ask[0])]
+            except KeyError:
+                pass
 
     def get_bids(self):
         """Get the current bids
@@ -110,6 +116,11 @@ class DepthCache(object):
         """
         return self._asks.items()
 
+    def clear(self) -> None:
+        self._bids.clear()
+        self._asks.clear()
+        self.update_time = None
+
 
 class DepthCacheManager(object):
 
@@ -142,6 +153,7 @@ class DepthCacheManager(object):
         self._limit = limit
         self._coro = coro
         self._last_update_id = None
+        # TODO deque
         self._depth_message_buffer = []
         self._bm = bm
         self._depth_cache = DepthCache(self._symbol)
@@ -162,28 +174,34 @@ class DepthCacheManager(object):
         """
         self._last_update_id = None
         self._depth_message_buffer = []
+        self._first_update_after_snapshot = True
+
+        # wait for some socket responses
+        while not len(self._depth_message_buffer):
+            await asyncio.sleep(0.02)
+        await asyncio.sleep(0.1)
 
         res = await self._client.get_order_book(symbol=self._symbol, limit=self._limit)
 
         # process bid and asks from the order book
+        self._depth_cache.clear()
         for bid in res['bids']:
             self._depth_cache.add_bid(bid)
         for ask in res['asks']:
             self._depth_cache.add_ask(ask)
-
-        # set first update id
-        self._last_update_id = res['lastUpdateId']
+        await asyncio.sleep(0)
 
         # set a time to refresh the depth cache
         if self._refresh_interval:
             self._refresh_time = int(time.time()) + self._refresh_interval
 
-        # Apply any updates from the websocket
-        for msg in self._depth_message_buffer:
-            await self._process_depth_message(msg, buffer=True)
+        # set first update id
+        self._last_update_id = res['lastUpdateId']
 
-        # clear the depth buffer
-        self._depth_message_buffer = []
+        # Apply any updates from the websocket
+        while self._depth_message_buffer:
+            msg = self._depth_message_buffer.pop(0)
+            await self._process_depth_message(msg, buffer=True)
 
     async def _start_socket(self):
         """Start the depth cache socket
@@ -194,10 +212,6 @@ class DepthCacheManager(object):
             self._bm = BinanceSocketManager(self._client, self._loop)
 
         await self._bm.start_depth_socket(self._symbol, self._depth_event)
-
-        # wait for some socket responses
-        while not len(self._depth_message_buffer):
-            await asyncio.sleep(0.05)
 
     async def _depth_event(self, msg):
         """Handle a depth event
@@ -215,7 +229,7 @@ class DepthCacheManager(object):
             if self._coro:
                 await self._coro(None)
 
-        if self._last_update_id is None:
+        if self._last_update_id is None or self._depth_message_buffer:
             # Initial depth snapshot fetch not yet performed, buffer messages
             self._depth_message_buffer.append(msg)
         else:
@@ -228,22 +242,34 @@ class DepthCacheManager(object):
         :return:
 
         """
-        if buffer and msg['u'] <= self._last_update_id:
-            # ignore any updates before the initial update id
+        if msg['U'] == self._last_update_id + 1:
+            # Skip the rest for the most common success case
+            pass
+        elif msg['u'] < self._last_update_id - 10_000:
+            # This should not happen!
+            raise ValueError('Received super-old depth message', msg['u'], self._last_update_id, msg)
+        elif buffer and msg['u'] <= self._last_update_id:
+            # ignore any updates before the initial update id when initializing
             return
-        if msg['U'] <= self._last_update_id + 1 <= msg['u'] and self._first_update_after_snapshot:
+        elif self._first_update_after_snapshot and msg['u'] <= self._last_update_id:
             self._first_update_after_snapshot = False
+            return
+        elif msg['U'] <= self._last_update_id + 1 <= msg['u'] and self._first_update_after_snapshot:
+            # apply the first partially applied update after snapshot
+            pass
         elif msg['U'] != self._last_update_id + 1:
             # if not buffered check we get sequential updates
             # otherwise init cache again
             self._logger.warning(
-                'Reiniting cache of %s because of non-consequential update id! %d/%d followed %d',
+                'Reiniting cache of %s because of non-consequential update id! Batch %d-%d followed %d',
                 self._symbol,
                 msg['U'],
                 msg['u'],
                 self._last_update_id,
             )
-            await self._init_cache()
+            self._last_update_id = None
+            asyncio.ensure_future(self._init_cache())
+        self._first_update_after_snapshot = False
 
         # add any bid or ask values
         for bid in msg['b']:
@@ -262,7 +288,8 @@ class DepthCacheManager(object):
 
         # after processing event see if we need to refresh the depth cache
         if self._refresh_interval and int(time.time()) > self._refresh_time:
-            await self._init_cache()
+            self._last_update_id = None
+            asyncio.ensure_future(self._init_cache())
 
     def get_depth_cache(self):
         """Get the current depth cache
@@ -278,6 +305,5 @@ class DepthCacheManager(object):
         :return:
         """
         await self._bm.close()
-        await asyncio.sleep(1)
-        self._depth_cache = None
-        self.last_depth_message = None
+        self._last_update_id = None
+        self._depth_message_buffer.clear()
