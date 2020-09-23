@@ -236,7 +236,13 @@ class DepthCacheManager(object):
         elif msg['U'] != self._last_update_id + 1:
             # if not buffered check we get sequential updates
             # otherwise init cache again
-            self._logger.warning('Reiniting cache because of non-consequential update id!')
+            self._logger.warning(
+                'Reiniting cache of %s because of non-consequential update id! %d/%d followed %d',
+                self._symbol,
+                msg['U'],
+                msg['u'],
+                self._last_update_id,
+            )
             await self._init_cache()
 
         # add any bid or ask values
