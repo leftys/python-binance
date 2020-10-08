@@ -17,7 +17,7 @@ def test_add_bids(fresh_cache):
     for bid in [high_bid, low_bid, mid_bid]:
         fresh_cache.add_bid(bid)
 
-    bids = fresh_cache.get_bids()
+    bids = list(fresh_cache.get_bids())
 
     assert len(bids) == 3
 
@@ -33,7 +33,7 @@ def test_add_asks(fresh_cache):
     for ask in [high_ask, low_ask, mid_ask]:
         fresh_cache.add_ask(ask)
 
-    asks = fresh_cache.get_asks()
+    asks = list(fresh_cache.get_asks())
 
     # Three asks should be in the cache
     assert len(asks) == 3
