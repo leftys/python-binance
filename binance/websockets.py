@@ -109,7 +109,7 @@ class BinanceSocketManager:
         self._client = client
         self._timers = {'user': None, 'margin': None}
         self._listen_keys = {'user': None, 'margin': None}
-        self._account_callbacks = {'user': None, 'margin': None}
+        self._account_coros = {'user': None, 'margin': None}
         self._loop = loop
         self._log = logging.getLogger(__name__)
 
@@ -550,7 +550,7 @@ class BinanceSocketManager:
         """Starts one of user or margin socket"""
         await self._check_account_socket_open(listen_key)
         self._listen_keys[socket_type] = listen_key
-        self._account_callbacks[socket_type] = coro
+        self._account_coros[socket_type] = coro
         conn_key = await self._start_socket(listen_key, coro)
         if conn_key:
             # start timer to keep socket alive
@@ -566,20 +566,19 @@ class BinanceSocketManager:
                 break
 
     def _start_socket_timer(self, socket_type):
-        self._timers[socket_type] = self._loop.call_later(self._user_timeout, self._keepalive_user_socket)
+        self._timers[socket_type] = self._loop.call_later(self._user_timeout, self._keepalive_account_socket)
 
     def _keepalive_account_socket(self, socket_type):
-
         async def _run():
             if socket_type == 'user':
                 listen_key_func = self._client.stream_get_listen_key
-                callback = self._account_callbacks[socket_type]
+                coro = self._account_coros[socket_type]
             else:
                 listen_key_func = self._client.margin_stream_get_listen_key
-                callback = self._account_callbacks[socket_type]
+                coro = self._account_coros[socket_type]
             listen_key = listen_key_func()
             if listen_key != self._listen_keys[socket_type]:
-                await self._start_account_socket(socket_type, listen_key, callback)
+                await self._start_account_socket(socket_type, listen_key, coro)
 
         # this allows execution to keep going
         asyncio.ensure_future(_run())
