@@ -566,7 +566,7 @@ class BinanceSocketManager:
                 break
 
     def _start_socket_timer(self, socket_type):
-        self._timers[socket_type] = self._loop.call_later(self._user_timeout, self._keepalive_account_socket)
+        self._timers[socket_type] = self._loop.call_later(self._user_timeout, self._keepalive_account_socket, socket_type)
 
     def _keepalive_account_socket(self, socket_type):
         async def _run():
