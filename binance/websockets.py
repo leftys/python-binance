@@ -541,7 +541,7 @@ class BinanceSocketManager:
         Message Format - see Binance API docs for all types
         """
         # Get the user margin listen key
-        margin_listen_key = self._client.margin_stream_get_listen_key()
+        margin_listen_key = await self._client.margin_stream_get_listen_key()
         # and start the socket with this specific key
         return await self._start_account_socket('margin', margin_listen_key, coro)
 
@@ -566,9 +566,9 @@ class BinanceSocketManager:
                 break
 
     def _start_socket_timer(self, socket_type):
-        self._timers[socket_type] = self._loop.call_later(self._user_timeout, self._keepalive_account_socket, socket_type)
+        self._timers[socket_type] = asyncio.ensure_future(self._keepalive_account_socket(socket_type))
 
-    def _keepalive_account_socket(self, socket_type):
+    async def _keepalive_account_socket(self, socket_type):
         async def _run():
             if socket_type == 'user':
                 listen_key_func = self._client.stream_get_listen_key
@@ -576,12 +576,12 @@ class BinanceSocketManager:
             else:
                 listen_key_func = self._client.margin_stream_get_listen_key
                 coro = self._account_coros[socket_type]
-            listen_key = listen_key_func()
+            listen_key = await listen_key_func()
             if listen_key != self._listen_keys[socket_type]:
                 await self._start_account_socket(socket_type, listen_key, coro)
 
         # this allows execution to keep going
-        asyncio.ensure_future(_run())
+        await _run()
 
     async def stop_socket(self, conn_key):
         """Stop a websocket given the connection key
