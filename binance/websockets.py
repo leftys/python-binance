@@ -71,8 +71,9 @@ class ReconnectingWebsocket:
             self._log.debug('ws connection cancelled')
             return
         except Exception as ex:
-            result = ex
-        self._log.warning('connection finished with result: %r.', result)
+            self._log.exception('connection finished with exception: %r.', exc_info = ex)
+        else:
+            self._log.exception('connection finished with result: %r.', result)
 
     def _get_reconnect_wait(self, attempts: int) -> int:
         expo = 2 ** attempts
@@ -593,6 +594,7 @@ class BinanceSocketManager:
             if listen_key != self._listen_keys[socket_type]:
                 await self._start_account_socket(socket_type, listen_key, coro)
 
+        await asyncio.sleep(self._user_timeout)
         # this allows execution to keep going
         await _run()
 
