@@ -1,7 +1,6 @@
 # coding=utf-8
 import ujson as json
 import requests
-import aiohttp
 
 
 class BinanceAPIException(Exception):

@@ -1,8 +1,8 @@
 # coding=utf-8
 
-import aiohttp
-import aiohttp_retry
+import aiosonic
 import asyncio
+import sortedcontainers
 import hashlib
 import hmac
 import requests
@@ -108,13 +108,12 @@ class BaseClient(ABC):
         self._requests_params = requests_params
         self.last_response_headers: multidict.CIMultiDict[str]= {}
         # self.response = None
-
-    def _get_headers(self):
-        return {
+        self._headers = aiosonic.HttpHeaders({
             'Accept': 'application/json',
             'User-Agent': 'binance/python',
             'X-MBX-APIKEY': self.API_KEY
-        }
+        })
+        self._timeouts = aiosonic.timeout.Timeouts(request_timeout = 30)
 
     @abstractmethod
     def _init_session(self):
@@ -166,7 +165,7 @@ class BaseClient(ABC):
     def _get_request_kwargs(self, method, signed, force_params=False, **kwargs):
 
         # set default requests timeout
-        kwargs['timeout'] = 10
+        kwargs['timeouts'] = self._timeouts
 
         # add our global requests params
         if self._requests_params:
@@ -192,14 +191,17 @@ class BaseClient(ABC):
             # sort post params
             kwargs['data'] = self._order_params(kwargs['data'])
             # Remove any arguments with values of None.
-            null_args = [i for i, (key, value) in enumerate(kwargs['data']) if value is None]
-            for i in reversed(null_args):
-                del kwargs['data'][i]
+            # null_args = [i for i, (key, value) in enumerate(kwargs['data']) if value is None]
+            # for i in reversed(null_args):
+            #     del kwargs['data'][i]
+            # kwargs['data'] = sortedcontainers.SortedDict(kwargs['data'])
+            kwargs['data'] = dict(kwargs['data'])
 
         # if get request assign data array to params value for requests lib
         if data and (method == 'get' or force_params):
-            kwargs['params'] = '&'.join('%s=%s' % (data[0], data[1]) for data in kwargs['data'])
-            del(kwargs['data'])
+            # kwargs['params'] = '&'.join('%s=%s' % (data[0], data[1]) for data in kwargs['data'])
+            kwargs['params'] = kwargs['data']
+            del kwargs['data']
 
         return kwargs
 
@@ -215,10 +217,8 @@ class Client(BaseClient):
 
     def _init_session(self):
 
-        headers = self._get_headers()
-
         session = requests.session()
-        session.headers.update(headers)
+        session.headers.update(self._headers)
         return session
 
     def _request(self, method, uri, signed, force_params=False, **kwargs):
@@ -3719,38 +3719,24 @@ class AsyncClient(BaseClient):
         return self
 
     def _init_session(self):
-        loop = asyncio.get_event_loop()
-        retry = aiohttp_retry.ExponentialRetry(
-            attempts = 2,
-            start_timeout = 0.001,
-            factor = 10,
-            exceptions = {aiohttp.ClientOSError,}
-        )
-        session = aiohttp_retry.RetryClient(
-            retry_options = retry,
-            loop=loop,
-            headers=self._get_headers(),
-            json_serialize = ujson.dumps,
-        )
+        session = aiosonic.HTTPClient()
         return session
 
     async def _request(self, method, uri, signed, force_params=False, **kwargs):
-
         kwargs = self._get_request_kwargs(method, signed, force_params, **kwargs)
-
-        async with getattr(self.session, method)(uri, **kwargs) as response:
-            return await self._handle_response(response)
+        response = await getattr(self.session, method)(uri, headers = self._headers, **kwargs)
+        return await self._handle_response(response)
 
     async def _handle_response(self, response: aiohttp.ClientResponse):
         """Internal helper for handling API responses from the Binance server.
         Raises the appropriate exceptions when necessary; otherwise, returns the
         response.
         """
-        if not str(response.status).startswith('2'):
-            raise BinanceAPIException(response, response.status, await response.text())
+        if not str(response.status_code).startswith('2'):
+            raise BinanceAPIException(response, response.status_code, await response.text())
         self.last_response_headers = response.headers
         try:
-            return await response.json()
+            return ujson.loads(await response.content()) #(json_decoder = ujson.loads)
         except ValueError:
             txt = await response.text()
             raise BinanceRequestException('Invalid Response: {}'.format(txt))

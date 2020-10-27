@@ -1,4 +1,4 @@
-aiohttp==2.3.10
+aiosonic==0.7.0
 certifi==2019.11.28
 cryptography==2.3
 dateparser==0.7.0
