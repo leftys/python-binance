@@ -4429,3 +4429,36 @@ class AsyncClient(BaseClient):
 
         """
         return await self._request_futures_api('get', 'income', True, data=params)
+
+    async def futures_transfer(self, **params):
+        """Execute universal transfer between master spot and future accounts.
+
+        https://binance-docs.github.io/apidocs/spot/en/#universal-transfer-for-master-account
+
+        :param asset: name of the asset
+        :type asset: str
+        :param amount: amount to transfer
+        :type amount: str
+        :param fromAccountType: type of account: SPOT | USDT_FUTURE | COIN_FUTURE
+        :type fromAccountType: str
+        :param toAccountType: type of account: SPOT | USDT_FUTURE | COIN_FUTURE
+        :type toAccountType: str
+        :param recvWindow: the number of milliseconds the request is valid for
+        :type recvWindow: int
+
+        .. code:: python
+
+            transfer = client.transfer(asset='BTC', amount='1.1', fromAccountType='SPOT', toAccountType='USDT_FUTURE)
+
+        :returns: API response
+
+        .. code-block:: python
+
+            {
+                "tranId": 100000001
+            }
+
+        :raises: BinanceRequestException, BinanceAPIException
+
+        """
+        return await self._request_margin_api('post', 'sub-account/universalTransfer', signed=True, data=params)
