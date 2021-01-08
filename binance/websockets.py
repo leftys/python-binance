@@ -40,6 +40,10 @@ class ReconnectingWebsocket:
         async with ws.connect(ws_url) as socket:
             self._socket = socket
             self._reconnects = 0
+            # self._socket = self._socket.transport.get_extra_info('socket')
+            # self._fd = self._socket.fileno()
+            # import fcntl
+            # fcntl.ioctl(self._fd, 35, 1)
 
             try:
                 while keep_waiting:
@@ -61,19 +65,16 @@ class ReconnectingWebsocket:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                self._log.info('ws exception: %r', e)
+                self._log.warning('ws exception: %r', e)
                 await self._reconnect()
 
     def _handle_conn_done(self, task: asyncio.Task):
         try:
-            result = task.result()
+            task.result()
         except asyncio.CancelledError:
             self._log.debug('ws connection cancelled')
-            return
-        except Exception as ex:
-            self._log.exception('connection finished with exception: %r.', exc_info = ex)
-        else:
-            self._log.exception('connection finished with result: %r.', result)
+        except Exception:
+            self._log.exception('connection finished with exception')
 
     def _get_reconnect_wait(self, attempts: int) -> int:
         expo = 2 ** attempts
