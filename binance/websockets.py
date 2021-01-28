@@ -4,7 +4,6 @@ import ujson as json
 import logging
 from random import random
 import websockets as ws
-import websockets.speedups
 
 from .client import Client
 
