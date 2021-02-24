@@ -7,6 +7,7 @@ import hmac
 import requests
 import time
 import ujson
+import multidict
 from abc import ABC, abstractmethod
 from operator import itemgetter
 
@@ -104,6 +105,7 @@ class BaseClient(ABC):
         self.API_SECRET = api_secret
         self.session = self._init_session()
         self._requests_params = requests_params
+        self.last_response_headers: multidict.CIMultiDictProxy[str] = multidict.CIMultiDictProxy({})
         # self.response = None
 
     def _get_headers(self):
@@ -3732,13 +3734,14 @@ class AsyncClient(BaseClient):
         async with getattr(self.session, method)(uri, **kwargs) as response:
             return await self._handle_response(response)
 
-    async def _handle_response(self, response):
+    async def _handle_response(self, response: aiohttp.ClientResponse):
         """Internal helper for handling API responses from the Binance server.
         Raises the appropriate exceptions when necessary; otherwise, returns the
         response.
         """
         if not str(response.status).startswith('2'):
             raise BinanceAPIException(response, response.status, await response.text())
+        self.last_response_headers = response.headers
         try:
             return await response.json()
         except ValueError:
