@@ -105,7 +105,7 @@ class BaseClient(ABC):
         self.API_SECRET = api_secret
         self.session = self._init_session()
         self._requests_params = requests_params
-        self.last_response_headers: multidict.CIMultiDictProxy[str] = multidict.CIMultiDictProxy({})
+        self.last_response_headers: multidict.CIMultiDict[str]= {}
         # self.response = None
 
     def _get_headers(self):
