@@ -10,3 +10,4 @@ websockets==3.4
 chardet
 sortedcontainers
 ujson
+aiohttp-retry==2.3.5

@@ -1,6 +1,7 @@
 # coding=utf-8
 
 import aiohttp
+import aiohttp_retry
 import asyncio
 import hashlib
 import hmac
@@ -343,7 +344,7 @@ class Client(BaseClient):
                             }
                         ]
                     }
-                ]
+                ]init
             }
 
         :raises: BinanceRequestException, BinanceAPIException
@@ -3718,9 +3719,15 @@ class AsyncClient(BaseClient):
         return self
 
     def _init_session(self):
-
         loop = asyncio.get_event_loop()
-        session = aiohttp.ClientSession(
+        retry = aiohttp_retry.ExponentialRetry(
+            attempts = 2,
+            start_timeout = 0.001,
+            factor = 10,
+            exceptions = {aiohttp.ClientOSError,}
+        )
+        session = aiohttp_retry.RetryClient(
+            retry_options = retry,
             loop=loop,
             headers=self._get_headers(),
             json_serialize = ujson.dumps,
