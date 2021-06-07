@@ -1,7 +1,6 @@
 # coding=utf-8
 
-import aiohttp
-import aiohttp_retry
+import httpx
 import asyncio
 import hashlib
 import hmac
@@ -106,13 +105,14 @@ class BaseClient(ABC):
         self.API_SECRET = api_secret
         self.session = self._init_session()
         self._requests_params = requests_params
-        self.last_response_headers: multidict.CIMultiDict[str]= {}
+        self.last_response_headers: multidict.CIMultiDict[str] = {}
         # self.response = None
 
     def _get_headers(self):
         return {
             'Accept': 'application/json',
             'User-Agent': 'binance/python',
+            'Content-Type': 'application/json',
             'X-MBX-APIKEY': self.API_KEY
         }
 
@@ -200,6 +200,9 @@ class BaseClient(ABC):
         if data and (method == 'get' or force_params):
             kwargs['params'] = '&'.join('%s=%s' % (data[0], data[1]) for data in kwargs['data'])
             del(kwargs['data'])
+
+        if data and (method == 'post'):
+            kwargs['data'] = dict(kwargs['data'])
 
         return kwargs
 
@@ -3719,40 +3722,38 @@ class AsyncClient(BaseClient):
         return self
 
     def _init_session(self):
-        loop = asyncio.get_event_loop()
-        retry = aiohttp_retry.ExponentialRetry(
-            attempts = 2,
-            start_timeout = 0.001,
-            factor = 10,
-            exceptions = {aiohttp.ClientOSError,}
+        limits = httpx.Limits(
+            max_connections = 30,
+            max_keepalive_connections = 5,
+            keepalive_expiry = 30,
         )
-        session = aiohttp_retry.RetryClient(
-            retry_options = retry,
-            loop=loop,
-            headers=self._get_headers(),
-            json_serialize = ujson.dumps,
+        session = httpx.AsyncClient(
+            headers = self._get_headers(),
+            limits = limits,
+            http2 = True,
         )
         return session
 
+    async def stop(self):
+        await self.session.aclose()
+
     async def _request(self, method, uri, signed, force_params=False, **kwargs):
-
         kwargs = self._get_request_kwargs(method, signed, force_params, **kwargs)
+        response = await self.session.request(method, uri, **kwargs)
+        return await self._handle_response(response)
 
-        async with getattr(self.session, method)(uri, **kwargs) as response:
-            return await self._handle_response(response)
-
-    async def _handle_response(self, response: aiohttp.ClientResponse):
+    async def _handle_response(self, response: httpx.Response):
         """Internal helper for handling API responses from the Binance server.
         Raises the appropriate exceptions when necessary; otherwise, returns the
         response.
         """
-        if not str(response.status).startswith('2'):
-            raise BinanceAPIException(response, response.status, await response.text())
+        if not str(response.status_code).startswith('2'):
+            raise BinanceAPIException(response, response.status_code, response.text)
         self.last_response_headers = response.headers
         try:
-            return await response.json()
+            return ujson.loads(response.content)
         except ValueError:
-            txt = await response.text()
+            txt = response.content
             raise BinanceRequestException('Invalid Response: {}'.format(txt))
 
     async def _request_api(self, method, path, signed=False, version=BaseClient.PUBLIC_API_VERSION, **kwargs):
