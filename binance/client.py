@@ -201,7 +201,7 @@ class BaseClient(ABC):
             kwargs['params'] = '&'.join('%s=%s' % (data[0], data[1]) for data in kwargs['data'])
             del(kwargs['data'])
 
-        if data and (method == 'post'):
+        if data and (method != 'get'):
             kwargs['data'] = dict(kwargs['data'])
 
         return kwargs
