@@ -199,9 +199,9 @@ class BaseClient(ABC):
         # if get request assign data array to params value for requests lib
         if data and (method == 'get' or force_params):
             kwargs['params'] = '&'.join('%s=%s' % (data[0], data[1]) for data in kwargs['data'])
-            del(kwargs['data'])
+            del kwargs['data']
 
-        if data and (method != 'get'):
+        if data and method != 'get' and not force_params:
             kwargs['data'] = dict(kwargs['data'])
 
         return kwargs
@@ -3762,7 +3762,7 @@ class AsyncClient(BaseClient):
 
     async def _request_withdraw_api(self, method, path, signed=False, **kwargs):
         uri = self._create_withdraw_api_uri(path)
-        return await self._request(method, uri, signed, True, **kwargs)
+        return await self._request(method, uri, signed, force_params = True, **kwargs)
 
     async def _request_website(self, method, path, signed=False, **kwargs):
         uri = self._create_website_uri(path)
@@ -3770,11 +3770,11 @@ class AsyncClient(BaseClient):
 
     async def _request_margin_api(self, method, path, signed=False, **kwargs):
         uri = self._create_margin_api_uri(path)
-        return await self._request(method, uri, signed, **kwargs)
+        return await self._request(method, uri, signed, force_params = True, **kwargs)
 
     async def _request_futures_api(self, method, path, signed=False, **kwargs):
         uri = self._create_futures_api_uri(path)
-        return await self._request(method, uri, signed, True, **kwargs)
+        return await self._request(method, uri, signed, force_params = True, **kwargs)
 
     async def _get(self, path, signed=False, version=BaseClient.PUBLIC_API_VERSION, **kwargs):
         return await self._request_api('get', path, signed, version, **kwargs)
