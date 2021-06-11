@@ -3727,7 +3727,7 @@ class AsyncClient(BaseClient):
         response = await getattr(self.session, method)(uri, headers = self._headers, **kwargs)
         return await self._handle_response(response)
 
-    async def _handle_response(self, response: aiohttp.ClientResponse):
+    async def _handle_response(self, response: aiosonic.HttpResponse):
         """Internal helper for handling API responses from the Binance server.
         Raises the appropriate exceptions when necessary; otherwise, returns the
         response.
