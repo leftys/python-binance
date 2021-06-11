@@ -3724,8 +3724,8 @@ class AsyncClient(BaseClient):
     def _init_session(self):
         limits = httpx.Limits(
             max_connections = 30,
-            max_keepalive_connections = 5,
-            keepalive_expiry = 30,
+            max_keepalive_connections = 15,
+            keepalive_expiry = 600,
         )
         session = httpx.AsyncClient(
             headers = self._get_headers(),
