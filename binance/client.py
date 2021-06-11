@@ -104,7 +104,6 @@ class BaseClient(ABC):
 
         self.API_KEY = api_key
         self.API_SECRET = api_secret
-        self.session = self._init_session()
         self._requests_params = requests_params
         self.last_response_headers: multidict.CIMultiDict[str]= {}
         # self.response = None
@@ -113,7 +112,8 @@ class BaseClient(ABC):
             'User-Agent': 'binance/python',
             'X-MBX-APIKEY': self.API_KEY
         })
-        self._timeouts = aiosonic.timeout.Timeouts(request_timeout = 30)
+        self._timeouts = aiosonic.Timeouts(request_timeout = 30)
+        self.session = self._init_session()
 
     @abstractmethod
     def _init_session(self):
@@ -3719,7 +3719,12 @@ class AsyncClient(BaseClient):
         return self
 
     def _init_session(self):
-        session = aiosonic.HTTPClient()
+        session = aiosonic.HTTPClient(
+            connector = aiosonic.TCPConnector(
+                pool_size = 5,
+                timeouts = self._timeouts,
+            )
+        )
         return session
 
     async def _request(self, method, uri, signed, force_params=False, **kwargs):
