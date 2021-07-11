@@ -1,4 +1,4 @@
-aiosonic==0.7.0
+aiosonic==0.11.3
 certifi==2019.11.28
 cryptography==2.3
 dateparser==0.7.0
@@ -10,4 +10,3 @@ websockets==3.4
 chardet
 sortedcontainers
 ujson
-aiohttp-retry==2.3.5
