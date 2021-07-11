@@ -3708,6 +3708,7 @@ class Client(BaseClient):
 
 
 class AsyncClient(BaseClient):
+    POOL_SIZE = 10
 
     @classmethod
     async def create(cls, api_key='', api_secret='', requests_params=None):
@@ -3721,7 +3722,7 @@ class AsyncClient(BaseClient):
     def _init_session(self):
         session = aiosonic.HTTPClient(
             connector = aiosonic.TCPConnector(
-                pool_size = 5,
+                pool_size = self.POOL_SIZE,
                 timeouts = self._timeouts,
             ),
         )
