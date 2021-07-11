@@ -3723,13 +3723,13 @@ class AsyncClient(BaseClient):
             connector = aiosonic.TCPConnector(
                 pool_size = 5,
                 timeouts = self._timeouts,
-            )
+            ),
         )
         return session
 
     async def _request(self, method, uri, signed, force_params=False, **kwargs):
         kwargs = self._get_request_kwargs(method, signed, force_params, **kwargs)
-        response = await getattr(self.session, method)(uri, headers = self._headers, **kwargs)
+        response = await getattr(self.session, method)(uri, headers = self._headers.copy(), **kwargs)
         return await self._handle_response(response)
 
     async def _handle_response(self, response: aiosonic.HttpResponse):
