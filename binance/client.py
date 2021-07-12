@@ -3730,7 +3730,7 @@ class AsyncClient(BaseClient):
 
     async def _request(self, method, uri, signed, force_params=False, **kwargs):
         kwargs = self._get_request_kwargs(method, signed, force_params, **kwargs)
-        response = await getattr(self.session, method)(uri, headers = self._headers.copy(), **kwargs)
+        response = await getattr(self.session, method)(uri, headers = self._headers.copy(), http2 = True, **kwargs)
         return await self._handle_response(response)
 
     async def _handle_response(self, response: aiosonic.HttpResponse):
