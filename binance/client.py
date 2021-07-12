@@ -105,8 +105,7 @@ class BaseClient(ABC):
         self.API_KEY = api_key
         self.API_SECRET = api_secret
         self._requests_params = requests_params
-        self.last_response_headers: multidict.CIMultiDict[str]= {}
-        # self.response = None
+        self.last_response_headers: multidict.CIMultiDict[str] = {}
         self._headers = aiosonic.HttpHeaders({
             'Accept': 'application/json',
             'User-Agent': 'binance/python',
@@ -3730,7 +3729,7 @@ class AsyncClient(BaseClient):
 
     async def _request(self, method, uri, signed, force_params=False, **kwargs):
         kwargs = self._get_request_kwargs(method, signed, force_params, **kwargs)
-        response = await getattr(self.session, method)(uri, headers = self._headers.copy(), http2 = True, **kwargs)
+        response = await getattr(self.session, method)(uri, headers = self._headers.copy(), **kwargs)
         return await self._handle_response(response)
 
     async def _handle_response(self, response: aiosonic.HttpResponse):
