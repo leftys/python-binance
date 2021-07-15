@@ -998,7 +998,7 @@ class Client(BaseClient):
         :raises: BinanceRequestException, BinanceAPIException
 
         """
-        return self._get('ticker/24hr', data=params)
+        return self._get('ticker/24hr', params=params)
 
     def get_symbol_ticker(self, **params):
         """Latest price for a symbol or symbols.
@@ -4009,7 +4009,7 @@ class AsyncClient(BaseClient):
     get_historical_klines_generator.__doc__ = Client.get_historical_klines_generator.__doc__
 
     async def get_ticker(self, **params):
-        return await self._get('ticker/24hr', data=params)
+        return await self._get('ticker/24hr', params=params)
     get_ticker.__doc__ = Client.get_ticker.__doc__
 
     async def get_symbol_ticker(self, **params):
