@@ -2,7 +2,7 @@
 
 import aiosonic
 import asyncio
-import sortedcontainers
+import logging
 import hashlib
 import hmac
 import requests
@@ -113,6 +113,7 @@ class BaseClient(ABC):
         })
         self._timeouts = aiosonic.Timeouts(request_timeout = 30)
         self.session = self._init_session()
+        self._logger = logging.getLogger(self.__class__.__name__)
 
     @abstractmethod
     def _init_session(self):
@@ -3729,7 +3730,12 @@ class AsyncClient(BaseClient):
 
     async def _request(self, method, uri, signed, force_params=False, **kwargs):
         kwargs = self._get_request_kwargs(method, signed, force_params, **kwargs)
-        response = await getattr(self.session, method)(uri, headers = self._headers.copy(), **kwargs)
+        try:
+            response = await self.session.request(method = method, url = uri,  headers = self._headers.copy(), **kwargs)
+        except ConnectionResetError:
+            # One immediate retry
+            self._logger.info('Retrying request after ConnectionResetError')
+            response = await self.session.request(method = method, url = uri, headers = self._headers.copy(), **kwargs)
         return await self._handle_response(response)
 
     async def _handle_response(self, response: aiosonic.HttpResponse):
