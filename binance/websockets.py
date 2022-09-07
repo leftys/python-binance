@@ -14,7 +14,7 @@ class ReconnectingWebsocket:
     MAX_RECONNECTS = 5
     MAX_RECONNECT_SECONDS = 60
     MIN_RECONNECT_WAIT = 0.1
-    TIMEOUT = 10
+    TIMEOUT = 30
 
     def __init__(self, loop, path, coro, prefix='ws/'):
         self._loop = loop
@@ -24,12 +24,14 @@ class ReconnectingWebsocket:
         self._prefix = prefix
         self._reconnects = 0
         self._conn = None
+        self._ping_loop = None
         self._socket = None
 
         self._connect()
 
     def _connect(self):
         self._conn = asyncio.ensure_future(self._run(), loop=self._loop)
+        self._ping_loop = asyncio.ensure_future(self._run_ping_loop(), loop=self._loop)
         self._conn.add_done_callback(self._handle_conn_done)
 
     async def _run(self):
@@ -47,18 +49,17 @@ class ReconnectingWebsocket:
 
             try:
                 while keep_waiting:
+                    evt = await self._socket.recv()
+                    # except asyncio.TimeoutError:
+                    #     self._log.debug("no message in {} seconds".format(self.TIMEOUT))
+                    #     await self.send_ping()
+                    # else:
                     try:
-                        evt = await asyncio.wait_for(self._socket.recv(), timeout=self.TIMEOUT)
-                    except asyncio.TimeoutError:
-                        self._log.debug("no message in {} seconds".format(self.TIMEOUT))
-                        await self.send_ping()
+                        evt_obj = json.loads(evt)
+                    except ValueError:
+                        self._log.info('error parsing evt json:{}'.format(evt))
                     else:
-                        try:
-                            evt_obj = json.loads(evt)
-                        except ValueError:
-                            self._log.info('error parsing evt json:{}'.format(evt))
-                        else:
-                            await self._coro(evt_obj)
+                        await self._coro(evt_obj)
             except ws.ConnectionClosed as e:
                 self._log.info('ws connection closed: %r', e)
                 await self._reconnect()
@@ -67,6 +68,12 @@ class ReconnectingWebsocket:
             except Exception as e:
                 self._log.warning('ws exception: %r', e)
                 await self._reconnect()
+
+    async def _run_ping_loop(self):
+        await asyncio.sleep(self.TIMEOUT)
+        while self._socket is not None:
+            await self.send_ping()
+            await asyncio.sleep(self.TIMEOUT)
 
     def _handle_conn_done(self, task: asyncio.Task):
         try:
@@ -104,6 +111,10 @@ class ReconnectingWebsocket:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._conn
         self._socket = None
+        if self._ping_loop:
+            self._ping_loop.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._ping_loop
 
 
 class BinanceSocketManager:
