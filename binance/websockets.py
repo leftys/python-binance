@@ -35,13 +35,12 @@ class ReconnectingWebsocket:
         self._conn.add_done_callback(self._handle_conn_done)
 
     async def _run(self):
-
         keep_waiting = True
-
         ws_url = self.STREAM_URL + self._prefix + self._path
         async with ws.connect(ws_url) as socket:
             self._socket = socket
             self._reconnects = 0
+            self._messages_in_a_row = 0
             # self._socket = self._socket.transport.get_extra_info('socket')
             # self._fd = self._socket.fileno()
             # import fcntl
@@ -49,17 +48,27 @@ class ReconnectingWebsocket:
 
             try:
                 while keep_waiting:
+                    queue_len = len(self._socket.messages)
+                    if queue_len == 0:
+                        self._messages_in_a_row = 0
+                    if queue_len > 10 and self._messages_in_a_row == 0:
+                        self._log.info(
+                            'Many messages just arrived, new = %d after = %d already processed on path = %s',
+                            queue_len, self._messages_in_a_row, self._path
+                        )
+
                     evt = await self._socket.recv()
-                    # except asyncio.TimeoutError:
-                    #     self._log.debug("no message in {} seconds".format(self.TIMEOUT))
-                    #     await self.send_ping()
-                    # else:
+                    self._messages_in_a_row += 1
                     try:
                         evt_obj = json.loads(evt)
                     except ValueError:
                         self._log.info('error parsing evt json:{}'.format(evt))
                     else:
                         await self._coro(evt_obj)
+
+                    # Yield every now and then to let new tasks being processed
+                    if queue_len > 1 and self._messages_in_a_row % 5 == 0:
+                        await asyncio.sleep(0)
             except ws.ConnectionClosed as e:
                 self._log.info('ws connection closed: %r', e)
                 await self._reconnect()
