@@ -6,3 +6,5 @@ build/
 dist/
 python_binance.egg-info/
 /env
+*.swp
+*.pyc
