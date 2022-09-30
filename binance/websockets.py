@@ -83,14 +83,16 @@ class ReconnectingWebsocket:
         while self._socket is not None:
             try:
                 await self.send_ping()
-                await asyncio.sleep(self.TIMEOUT)
             except ws.ConnectionClosed as ex:
                 if self._socket is None and ex.code == 1000:
                     # Connection closed successfully
-                    pass
+                    return
+            except asyncio.CancelledError:
+                raise
             except Exception as ex:
                 if self._socket is not None:
                     self._log.error('Websocket ping failed')
+            await asyncio.sleep(self.TIMEOUT)
 
     def _handle_conn_done(self, task: asyncio.Task):
         try:
