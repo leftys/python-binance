@@ -73,6 +73,7 @@ class ReconnectingWebsocket:
                 self._log.info('ws connection closed: %r', e)
                 await self._reconnect()
             except asyncio.CancelledError:
+                self._log.debug('ws connection cancelled')
                 raise
             except Exception as e:
                 self._log.warning('ws exception: %r', e)
@@ -126,14 +127,17 @@ class ReconnectingWebsocket:
 
     async def cancel(self):
         if self._conn:
+            self._log.debug('Cancelling conn')
             self._conn.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._conn
         self._socket = None
         if self._ping_loop:
+            self._log.debug('Cancelling ping loop')
             self._ping_loop.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._ping_loop
+        self._log.debug('Done')
 
 
 class BinanceSocketManager:
