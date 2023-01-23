@@ -84,6 +84,8 @@ class BaseClient(ABC):
     AGG_BUYER_MAKES = 'm'
     AGG_BEST_MATCH = 'M'
 
+    TIMEOUT_KEY = 'timeout'
+
     def __init__(self, api_key=None, api_secret=None, requests_params=None, tld='com'):
         """Binance API Client constructor
 
@@ -106,12 +108,12 @@ class BaseClient(ABC):
         self.API_SECRET = api_secret
         self._requests_params = requests_params
         self.last_response_headers: multidict.CIMultiDict[str] = {}
-        self._headers = aiosonic.HttpHeaders({
+        self._headers = {
             'Accept': 'application/json',
             'User-Agent': 'binance/python',
             'X-MBX-APIKEY': self.API_KEY
-        })
-        self._timeouts = aiosonic.Timeouts(request_timeout = 30)
+        }
+        self._timeouts = 10
         self.session = self._init_session()
         self._logger = logging.getLogger(self.__class__.__name__)
 
@@ -165,7 +167,7 @@ class BaseClient(ABC):
     def _get_request_kwargs(self, method, signed, force_params=False, **kwargs):
 
         # set default requests timeout
-        kwargs['timeouts'] = self._timeouts
+        kwargs[self.TIMEOUT_KEY] = self._timeouts
 
         # add our global requests params
         if self._requests_params:
@@ -211,7 +213,6 @@ class Client(BaseClient):
     def __init__(self, api_key, api_secret, requests_params=None):
 
         super().__init__(api_key, api_secret, requests_params)
-
         # init DNS and SSL cert
         self.ping()
 
@@ -3709,12 +3710,18 @@ class Client(BaseClient):
 
 class AsyncClient(BaseClient):
     POOL_SIZE = 10
+    TIMEOUT_KEY = 'timeouts'
 
     @classmethod
     async def create(cls, api_key='', api_secret='', requests_params=None):
 
         self = cls(api_key, api_secret, requests_params)
-
+        self._headers = aiosonic.HttpHeaders({
+            'Accept': 'application/json',
+            'User-Agent': 'binance/python',
+            'X-MBX-APIKEY': self.API_KEY
+        })
+        self._timeouts = aiosonic.Timeouts(request_timeout = 30)
         await self.ping()
 
         return self
