@@ -3721,12 +3721,12 @@ class AsyncClient(BaseClient):
             'User-Agent': 'binance/python',
             'X-MBX-APIKEY': self.API_KEY
         })
-        self._timeouts = aiosonic.Timeouts(request_timeout = 30)
         await self.ping()
 
         return self
 
     def _init_session(self):
+        self._timeouts = aiosonic.Timeouts(request_timeout = 30)
         session = aiosonic.HTTPClient(
             connector = aiosonic.TCPConnector(
                 pool_size = self.POOL_SIZE,
