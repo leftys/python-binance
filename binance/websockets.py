@@ -619,20 +619,17 @@ class BinanceSocketManager:
         self._timers[socket_type] = asyncio.ensure_future(self._keepalive_account_socket(socket_type))
 
     async def _keepalive_account_socket(self, socket_type):
-        async def _run():
-            if socket_type == 'user':
-                listen_key_func = self._client.stream_get_listen_key
-                coro = self._account_coros[socket_type]
-            else:
-                listen_key_func = self._client.margin_stream_get_listen_key
-                coro = self._account_coros[socket_type]
+        if socket_type == 'user':
+            listen_key_func = self._client.stream_get_listen_key
+            coro = self._account_coros[socket_type]
+        else:
+            listen_key_func = self._client.margin_stream_get_listen_key
+            coro = self._account_coros[socket_type]
+        while True:
+            await asyncio.sleep(self._user_timeout)
             listen_key = await listen_key_func()
             if listen_key != self._listen_keys[socket_type]:
                 await self._start_account_socket(socket_type, listen_key, coro)
-
-        await asyncio.sleep(self._user_timeout)
-        # this allows execution to keep going
-        await _run()
 
     async def stop_socket(self, conn_key):
         """Stop a websocket given the connection key
