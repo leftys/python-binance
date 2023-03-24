@@ -1,12 +1,12 @@
 aiosonic==0.11.3
 certifi==2019.11.28
 cryptography==2.3
-dateparser==0.7.0
+dateparser==1.1.7
 pyOpenSSL==19.0.0
 requests==2.22.0
 service-identity==17.0.0
-Twisted==19.7.0
-websockets==3.4
+Twisted
+websockets
 chardet
 sortedcontainers
 ujson

@@ -29,12 +29,18 @@ class DepthCache(object):
         :return:
 
         """
-        self._bids[float(bid[0])] = float(bid[1])
+        price = float(bid[0])
+        try:
+            orig_quantity = self._bids[price]
+        except KeyError:
+            orig_quantity = 0.
+        self._bids[price] = float(bid[1])
         if bid[1] == "0.00000000":
             try:
-                del self._bids[float(bid[0])]
+                del self._bids[price]
             except KeyError:
                 pass
+        return orig_quantity
 
     def add_ask(self, ask):
         """Add an ask to the cache
@@ -43,12 +49,18 @@ class DepthCache(object):
         :return:
 
         """
-        self._asks[float(ask[0])] = float(ask[1])
+        price = float(ask[0])
+        try:
+            orig_quantity = self._asks[price]
+        except KeyError:
+            orig_quantity = 0.
+        self._asks[price] = float(ask[1])
         if ask[1] == "0.00000000":
             try:
-                del self._asks[float(ask[0])]
+                del self._asks[price]
             except KeyError:
                 pass
+        return orig_quantity
 
     def get_bids(self):
         """Get the current bids
@@ -272,10 +284,8 @@ class DepthCacheManager(object):
         self._first_update_after_snapshot = False
 
         # add any bid or ask values
-        for bid in msg['b']:
-            self._depth_cache.add_bid(bid)
-        for ask in msg['a']:
-            self._depth_cache.add_ask(ask)
+        msg['pb'] = [self._depth_cache.add_bid(bid) for bid in msg['b']]
+        msg['pa'] = [self._depth_cache.add_ask(ask) for ask in msg['a']]
 
         # keeping update time
         self._depth_cache.update_time = msg['E']

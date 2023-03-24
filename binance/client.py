@@ -21,6 +21,7 @@ class BaseClient(ABC):
     API_URL = 'https://api.binance.{}/api'
     WITHDRAW_API_URL = 'https://api.binance.{}/wapi'
     MARGIN_API_URL = 'https://api.binance.{}/sapi'
+    INTERNAL_API_URL = 'https://www.binance.{}/bapi'
     WEBSITE_URL = 'https://www.binance.{}'
     FUTURES_URL = 'https://fapi.binance.{}/fapi'
     PUBLIC_API_VERSION = 'v1'
@@ -103,6 +104,7 @@ class BaseClient(ABC):
         self.MARGIN_API_URL = self.MARGIN_API_URL.format(tld)
         self.WEBSITE_URL = self.WEBSITE_URL.format(tld)
         self.FUTURES_URL = self.FUTURES_URL.format(tld)
+        self.INTERNAL_API_URL = self.INTERNAL_API_URL.format(tld)
 
         self.API_KEY = api_key
         self.API_SECRET = api_secret
@@ -131,6 +133,9 @@ class BaseClient(ABC):
     def _create_margin_api_uri(self, path):
         return self.MARGIN_API_URL + '/' + self.MARGIN_API_VERSION + '/' + path
 
+    def _create_internal_api_uri(self, path):
+        return self.INTERNAL_API_URL + '/' + path
+
     def _create_website_uri(self, path):
         return self.WEBSITE_URL + '/' + path
 
@@ -138,7 +143,6 @@ class BaseClient(ABC):
         return self.FUTURES_URL + '/' + self.FUTURES_API_VERSION + '/' + path
 
     def _generate_signature(self, data):
-
         ordered_data = self._order_params(data)
         query_string = '&'.join(["{}={}".format(d[0], d[1]) for d in ordered_data])
         m = hmac.new(self.API_SECRET.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256)
@@ -3732,6 +3736,8 @@ class AsyncClient(BaseClient):
                 pool_size = self.POOL_SIZE,
                 timeouts = self._timeouts,
             ),
+            # TODO: warning, insecure!
+            # verify_ssl = False,
         )
         return session
 
@@ -3773,6 +3779,10 @@ class AsyncClient(BaseClient):
 
     async def _request_margin_api(self, method, path, signed=False, **kwargs):
         uri = self._create_margin_api_uri(path)
+        return await self._request(method, uri, signed, **kwargs)
+
+    async def _request_internal_api(self, method, path, signed=False, **kwargs):
+        uri = self._create_internal_api_uri(path)
         return await self._request(method, uri, signed, **kwargs)
 
     async def _request_futures_api(self, method, path, signed=False, **kwargs):
@@ -4145,7 +4155,7 @@ class AsyncClient(BaseClient):
     withdraw.__doc__ = Client.withdraw.__doc__
 
     async def get_deposit_history(self, **params):
-        return await self._request_withdraw_api('get', 'depositHistory.html', True, data=params)
+        return await self._request_margin_api('get', 'capital/deposit/hisrec', True, data=params)
     get_deposit_history.__doc__ = Client.get_deposit_history.__doc__
 
     async def get_withdraw_history(self, **params):
@@ -4309,12 +4319,23 @@ class AsyncClient(BaseClient):
         return await self._request_futures_api('get', 'ticker/leverageBracket', data=params)
 
     def transfer_history(self, **params):
-        """Get future account transaction history list
+        """Get universal transfer history list
 
-        https://binance-docs.github.io/apidocs/futures/en/#new-future-account-transfer
-
+        :param type: enum
+        :param startTime:
+        :param endTime:
         """
-        return self._request_margin_api('get', 'futures/transfer', True, data=params)
+        return self._request_margin_api('get', 'asset/transfer', True, data=params)
+
+    def sub_transfer_history(self, **params):
+        """Get universal transfer history list
+
+        :param fromEmail:
+        :param toEmail:
+        :param startTime:
+        :param endTime:
+        """
+        return self._request_margin_api('get', 'sub-account/sub/transfer/history', True, data=params)
 
     async def futures_create_order(self, **params):
         """Send in a new order.
@@ -4476,3 +4497,25 @@ class AsyncClient(BaseClient):
 
         """
         return await self._request_margin_api('post', 'sub-account/universalTransfer', signed=True, data=params)
+
+    async def internal_total_balance(self, **params):
+        return await self._request_internal_api('get', 'asset/v2/private/asset-service/wallet/balance', True, data=params)
+
+    async def account_snapshot(self, **params):
+        '''
+        :param type: SPOT/MARGIN/FUTURES
+        :param startTime: ms timestamp
+        :param endTime: ms timestamp
+        :param limit: min 7, max 30, default 7
+        '''
+        return await self._request_margin_api('get', 'accountSnapshot', True, data=params)
+
+    async def sub_account_snapshot(self, **params):
+        '''
+        :param email:
+        :param type: SPOT/MARGIN/FUTURES
+        :param startTime: ms timestamp
+        :param endTime: ms timestamp
+        :param limit: min 7, max 30, default 7
+        '''
+        return await self._request_margin_api('get', 'managed-subaccount/accountSnapshot', True, data=params)
