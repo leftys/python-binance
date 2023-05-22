@@ -4498,6 +4498,9 @@ class AsyncClient(BaseClient):
         """
         return await self._request_margin_api('post', 'sub-account/universalTransfer', signed=True, data=params)
 
+    async def futures_transfer_2(self, **params):
+        return await self._request_margin_api('post', 'futures/transfer', signed=True, data=params)
+
     async def internal_total_balance(self, **params):
         return await self._request_internal_api('get', 'asset/v2/private/asset-service/wallet/balance', True, data=params)
 
