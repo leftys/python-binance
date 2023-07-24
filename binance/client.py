@@ -29,6 +29,8 @@ class BaseClient(ABC):
     WITHDRAW_API_VERSION = 'v3'
     MARGIN_API_VERSION = 'v1'
     FUTURES_API_VERSION = 'v1'
+    FUTURES_API_VERSION2 = 'v2'
+
 
     SYMBOL_TYPE_SPOT = 'SPOT'
 
@@ -139,8 +141,10 @@ class BaseClient(ABC):
     def _create_website_uri(self, path):
         return self.WEBSITE_URL + '/' + path
 
-    def _create_futures_api_uri(self, path):
-        return self.FUTURES_URL + '/' + self.FUTURES_API_VERSION + '/' + path
+    def _create_futures_api_uri(self, path: str, version=1) -> str:
+        url = self.FUTURES_URL
+        options = {1: self.FUTURES_API_VERSION, 2: self.FUTURES_API_VERSION2}
+        return url + '/' + options[version] + '/' + path
 
     def _generate_signature(self, data):
         ordered_data = self._order_params(data)
@@ -262,9 +266,8 @@ class Client(BaseClient):
         uri = self._create_margin_api_uri(path)
         return self._request(method, uri, signed, **kwargs)
 
-    def _request_futures_api(self, method, path, signed=False, **kwargs):
-        uri = self._create_futures_api_uri(path)
-        return self._request(method, uri, signed, True, **kwargs)
+    def _request_futures_api(self, method, path, signed=False, version=1, **kwargs):
+        uri = self._create_futures_api_uri(path, version)
 
     def _get(self, path, signed=False, version=BaseClient.PUBLIC_API_VERSION, **kwargs):
         return self._request_api('get', path, signed, version, **kwargs)
@@ -3785,8 +3788,8 @@ class AsyncClient(BaseClient):
         uri = self._create_internal_api_uri(path)
         return await self._request(method, uri, signed, **kwargs)
 
-    async def _request_futures_api(self, method, path, signed=False, **kwargs):
-        uri = self._create_futures_api_uri(path)
+    async def _request_futures_api(self, method, path, signed=False, version=1, **kwargs):
+        uri = self._create_futures_api_uri(path, version=version)
         return await self._request(method, uri, signed, True, **kwargs)
 
     async def _get(self, path, signed=False, version=BaseClient.PUBLIC_API_VERSION, **kwargs):
@@ -4399,7 +4402,7 @@ class AsyncClient(BaseClient):
         https://binance-docs.github.io/apidocs/futures/en/#future-account-balance-user_data
 
         """
-        return await self._request_futures_api('get', 'balance', True, data=params)
+        return await self._request_futures_api('get', 'balance', True, version=2, data=params)
 
     async def futures_account(self, **params):
         """Get current account information.
@@ -4407,7 +4410,7 @@ class AsyncClient(BaseClient):
         https://binance-docs.github.io/apidocs/futures/en/#account-information-user_data
 
         """
-        return await self._request_futures_api('get', 'account', True, data=params)
+        return await self._request_futures_api('get', 'account', True, version=2, data=params)
 
     async def futures_change_leverage(self, **params):
         """Change user's initial leverage of specific symbol market
@@ -4415,7 +4418,7 @@ class AsyncClient(BaseClient):
         https://binance-docs.github.io/apidocs/futures/en/#change-initial-leverage-trade
 
         """
-        return await self._request_futures_api('post', 'leverage', True, data=params)
+        return await self._request_futures_api('post', 'leverage', True, version=2, data=params)
 
     async def futures_change_margin_type(self, **params):
         """Change the margin type for a symbol
@@ -4447,7 +4450,7 @@ class AsyncClient(BaseClient):
         https://binance-docs.github.io/apidocs/futures/en/#position-information-user_data
 
         """
-        return await self._request_futures_api('get', 'positionRisk', True, data=params)
+        return await self._request_futures_api('get', 'positionRisk', True, version = 2, data=params)
 
     async def futures_account_trades(self, **params):
         """Get trades for the authenticated account and symbol.
