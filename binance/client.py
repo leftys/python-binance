@@ -19,6 +19,7 @@ from .exceptions import BinanceAPIException, BinanceRequestException, BinanceWit
 class BaseClient(ABC):
 
     API_URL = 'https://api.binance.{}/api'
+    # API_URL = 'https://testnet.binance.{}/api'
     WITHDRAW_API_URL = 'https://api.binance.{}/wapi'
     MARGIN_API_URL = 'https://api.binance.{}/sapi'
     INTERNAL_API_URL = 'https://www.binance.{}/bapi'

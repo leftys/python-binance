@@ -10,13 +10,12 @@ from .client import Client
 
 class ReconnectingWebsocket:
 
-    STREAM_URL = 'wss://stream.binance.com:9443/'
     MAX_RECONNECTS = 5
     MAX_RECONNECT_SECONDS = 60
     MIN_RECONNECT_WAIT = 0.1
     TIMEOUT = 30
 
-    def __init__(self, loop, path, coro, prefix='ws/'):
+    def __init__(self, loop, path, coro, url, prefix='ws/'):
         self._loop = loop
         self._log = logging.getLogger(__name__)
         self._path = path
@@ -26,6 +25,7 @@ class ReconnectingWebsocket:
         self._conn = None
         self._ping_loop = None
         self._socket = None
+        self._url = url
 
         self._connect()
 
@@ -36,7 +36,7 @@ class ReconnectingWebsocket:
 
     async def _run(self):
         keep_waiting = True
-        ws_url = self.STREAM_URL + self._prefix + self._path
+        ws_url = self._url + self._prefix + self._path
         async with ws.connect(ws_url) as socket:
             self._socket = socket
             self._reconnects = 0
@@ -125,6 +125,12 @@ class ReconnectingWebsocket:
         if self._socket:
             await self._socket.ping()
 
+    async def send(self, data):
+        if self._socket:
+            await self._socket.send(json.dumps(data))
+        else:
+            self._log.error('Cannot send data, socket not open yet. Data = %s', data)
+
     async def cancel(self):
         if self._conn:
             self._log.debug('Cancelling conn')
@@ -141,6 +147,10 @@ class ReconnectingWebsocket:
 
 
 class BinanceSocketManager:
+    STREAM_URL = 'wss://stream.binance.com:9443/'
+    # STREAM_URL = 'wss://testnet.binance.vision/'
+    ORDER_STREAM_URL = 'wss://ws-api.binance.com/'
+    # ORDER_STREAM_URL = 'wss://testnet.binance.vision/'
 
     WEBSOCKET_DEPTH_5 = '5'
     WEBSOCKET_DEPTH_10 = '10'
@@ -163,13 +173,17 @@ class BinanceSocketManager:
         self._loop = loop
         self._log = logging.getLogger(__name__)
 
-    async def _start_socket(self, path, coro, prefix='ws/'):
+    async def _start_socket(self, path, coro, url = STREAM_URL, prefix='ws/'):
         if path in self._conns:
             return False
 
-        self._conns[path] = ReconnectingWebsocket(self._loop, path, coro, prefix)
+        self._conns[path] = ReconnectingWebsocket(self._loop, path, coro, url, prefix)
 
         return path
+
+    async def start_order_socket(self, coro):
+        return await self._start_socket(path = 'v3', url = self.ORDER_STREAM_URL, prefix = 'ws-api/', coro = coro)
+
 
     async def start_depth_socket(self, symbol, coro, depth=None):
         """Start a websocket for symbol market depth returning either a diff or a partial book
@@ -558,7 +572,7 @@ class BinanceSocketManager:
 
         """
         path = 'streams={}'.format('/'.join(streams))
-        await self._start_socket(path, coro, 'stream?')
+        await self._start_socket(path, coro, prefix = 'stream?')
         return path
 
     async def start_user_socket(self, coro):
