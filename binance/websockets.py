@@ -634,14 +634,14 @@ class BinanceSocketManager:
 
     async def _keepalive_account_socket(self, socket_type):
         if socket_type == 'user':
-            listen_key_func = self._client.stream_get_listen_key
+            listen_key_func = self._client.stream_keepalive
             coro = self._account_coros[socket_type]
         else:
-            listen_key_func = self._client.margin_stream_get_listen_key
+            listen_key_func = self._client.margin_stream_keepalive
             coro = self._account_coros[socket_type]
         while True:
             await asyncio.sleep(self._user_timeout)
-            listen_key = await listen_key_func()
+            listen_key = await listen_key_func(self._listen_keys[socket_type])
             if listen_key != self._listen_keys[socket_type]:
                 await self._start_account_socket(socket_type, listen_key, coro)
 
