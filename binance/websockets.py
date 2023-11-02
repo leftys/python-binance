@@ -642,8 +642,11 @@ class BinanceSocketManager:
         while True:
             await asyncio.sleep(self._user_timeout)
             listen_key = await listen_key_func(self._listen_keys[socket_type])
-            if listen_key != self._listen_keys[socket_type]:
-                await self._start_account_socket(socket_type, listen_key, coro)
+            # As I understand this shouldn't happen anymore
+            # if listen_key != self._listen_keys[socket_type]:
+            #     await self._start_account_socket(socket_type, listen_key, coro)
+            if listen_key:
+                self._log.error('Received some response from keepalive, response = %s', listen_key)
 
     async def stop_socket(self, conn_key):
         """Stop a websocket given the connection key
