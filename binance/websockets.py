@@ -641,6 +641,7 @@ class BinanceSocketManager:
             coro = self._account_coros[socket_type]
         while True:
             await asyncio.sleep(self._user_timeout)
+            self._log.info('Sending ws keepalive to %s', self._listen_keys[socket_type])
             listen_key = await listen_key_func()
             if listen_key != self._listen_keys[socket_type]:
                 await self._start_account_socket(socket_type, listen_key, coro)
