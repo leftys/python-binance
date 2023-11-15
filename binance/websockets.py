@@ -4,6 +4,7 @@ import ujson as json
 import logging
 from random import random
 import websockets as ws
+import aiosonic.exceptions
 
 from .client import Client
 
@@ -639,17 +640,22 @@ class BinanceSocketManager:
         else:
             listen_key_func = self._client.margin_stream_get_listen_key
             coro = self._account_coros[socket_type]
+        await asyncio.sleep(self._user_timeout)
         while True:
             try:
-                await asyncio.sleep(self._user_timeout)
                 self._log.info('Sending ws keepalive to %s', self._listen_keys[socket_type])
                 listen_key = await listen_key_func()
                 if listen_key != self._listen_keys[socket_type]:
                     await self._start_account_socket(socket_type, listen_key, coro)
+                await asyncio.sleep(self._user_timeout)
             except asyncio.CancelledError:
                 pass
+            except aiosonic.exceptions.RequestTimeout:
+                self._log.warning('RequestTimeout in keepalive socket loop')
+                await asyncio.sleep(60)
             except Exception:
                 self._log.exception('Exception in keepalive socket loop')
+                await asyncio.sleep(60)
 
     async def stop_socket(self, conn_key):
         """Stop a websocket given the connection key
