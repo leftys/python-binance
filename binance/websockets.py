@@ -647,6 +647,7 @@ class BinanceSocketManager:
                 listen_key = await listen_key_func()
                 if listen_key != self._listen_keys[socket_type]:
                     await self._start_account_socket(socket_type, listen_key, coro)
+                    return
                 await asyncio.sleep(self._user_timeout)
             except asyncio.CancelledError:
                 pass
