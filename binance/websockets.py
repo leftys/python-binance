@@ -643,20 +643,24 @@ class BinanceSocketManager:
         await asyncio.sleep(self._user_timeout)
         while True:
             try:
-                self._log.info('Sending ws keepalive to %s', self._listen_keys[socket_type])
+                self._log.info('Sent ws keepalive to %s', self._listen_keys[socket_type])
                 listen_key = await listen_key_func()
-                if listen_key != self._listen_keys[socket_type]:
-                    await self._start_account_socket(socket_type, listen_key, coro)
-                    return
-                await asyncio.sleep(self._user_timeout)
             except asyncio.CancelledError:
-                pass
+                return
             except aiosonic.exceptions.RequestTimeout:
                 self._log.warning('RequestTimeout in keepalive socket loop')
-                await asyncio.sleep(60)
+                await asyncio.sleep(180)
             except Exception:
                 self._log.exception('Exception in keepalive socket loop')
                 await asyncio.sleep(60)
+            else:
+                if listen_key != self._listen_keys[socket_type]:
+                    old_key = self._listen_keys[socket_type]
+                    self._log.info('ws keepalive key changed to %s', listen_key)
+                    await self._start_account_socket(socket_type, listen_key, coro)
+                    asyncio.create_task(self.stop_socket(old_key))
+                    return
+                await asyncio.sleep(self._user_timeout)
 
     async def stop_socket(self, conn_key):
         """Stop a websocket given the connection key

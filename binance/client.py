@@ -4173,7 +4173,7 @@ class AsyncClient(BaseClient):
     # User Stream Endpoints
 
     async def stream_get_listen_key(self):
-        res = await self._post('userDataStream', False, data={})
+        res = await self._post('userDataStream', False, data={}, version = 'v3')
         return res['listenKey']
     stream_get_listen_key.__doc__ = Client.stream_get_listen_key.__doc__
 
