@@ -7,6 +7,7 @@ import websockets as ws
 import aiosonic.exceptions
 
 from .client import Client
+from .exceptions import BinanceAPIException
 
 
 class ReconnectingWebsocket:
@@ -627,7 +628,10 @@ class BinanceSocketManager:
             return
         for conn_key in self._conns:
             if len(conn_key) >= 60 and conn_key[:60] == listen_key:
-                await self.stop_socket(conn_key)
+                try:
+                    await self.stop_socket(conn_key)
+                except BinanceAPIException:
+                    self._log.warning('Failed to close socket %s, ignoring.', conn_key)
                 break
 
     def _start_socket_timer(self, socket_type):
