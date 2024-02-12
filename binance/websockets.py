@@ -39,7 +39,11 @@ class ReconnectingWebsocket:
     async def _run(self):
         keep_waiting = True
         ws_url = self._url + self._prefix + self._path
-        async with ws.connect(ws_url) as socket:
+        kwargs = {}
+        if not self._path == 'v3':
+            # Disable compression for order stream for minimal latency. Not sure its useful for the rest
+            kwargs = {'compression': None}
+        async with ws.connect(ws_url, **kwargs) as socket:
             self._socket = socket
             self._reconnects = 0
             self._messages_in_a_row = 0
