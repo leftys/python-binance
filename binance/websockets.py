@@ -40,8 +40,8 @@ class ReconnectingWebsocket:
         keep_waiting = True
         ws_url = self._url + self._prefix + self._path
         kwargs = {}
-        if not self._path == 'v3':
-            # Disable compression for order stream for minimal latency. Not sure its useful for the rest
+        if self._path == 'v3' or 'aggTrade' in self._path:
+            # Disable compression for order ws and trade ws for minimal latency. Not sure its useful for the rest.
             kwargs = {'compression': None}
         async with ws.connect(ws_url, **kwargs) as socket:
             self._socket = socket
