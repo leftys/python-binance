@@ -1,5 +1,7 @@
 import asyncio
+from collections.abc import Callable
 import contextlib
+from typing import Awaitable, Dict
 import ujson as json
 import logging
 from random import random
@@ -179,7 +181,7 @@ class BinanceSocketManager:
         self._loop = loop
         self._log = logging.getLogger(__name__)
 
-    async def _start_socket(self, path, coro, url = STREAM_URL, prefix='ws/'):
+    async def _start_socket(self, path: str, coro, url = STREAM_URL, prefix='ws/') -> str:
         if path in self._conns:
             return False
 
@@ -413,6 +415,11 @@ class BinanceSocketManager:
         """
         path = symbol.lower() + '@aggTrade'
         await self._start_socket(symbol.lower() + '@aggTrade', coro)
+        return path
+
+    async def start_binary_aggtrade_socket(self, symbol: str, coro: Callable[[Dict], Awaitable[None]]) -> str:
+        path = f"{symbol.lower()}@aggTrade?responseFormat=sbe&sbeSchemaId=2&sbeSchemaVersion=0"
+        await self._start_socket(path, coro)
         return path
 
     async def start_symbol_ticker_socket(self, symbol, coro):
