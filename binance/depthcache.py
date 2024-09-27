@@ -29,12 +29,12 @@ class DepthCache(object):
         :return:
 
         """
-        price = float(bid[0])
+        price = bid[0]
         try:
             orig_quantity = self._bids[price]
         except KeyError:
             orig_quantity = 0.
-        self._bids[price] = float(bid[1])
+        self._bids[price] = bid[1]
         if bid[1] == "0.00000000":
             try:
                 del self._bids[price]
@@ -49,12 +49,12 @@ class DepthCache(object):
         :return:
 
         """
-        price = float(ask[0])
+        price = ask[0]
         try:
             orig_quantity = self._asks[price]
         except KeyError:
             orig_quantity = 0.
-        self._asks[price] = float(ask[1])
+        self._asks[price] = ask[1]
         if ask[1] == "0.00000000":
             try:
                 del self._asks[price]
@@ -139,7 +139,7 @@ class DepthCacheManager(object):
     _default_refresh = 60 * 30  # 30 minutes
 
     @classmethod
-    async def create(cls, client, loop, symbol, coro=None, refresh_interval=_default_refresh, bm=None, limit=500):
+    async def create(cls, client, loop, symbol, coro=None, refresh_interval=_default_refresh, bm=None, limit=500, depth_cache_constructor=None):
         """Create a DepthCacheManager instance
 
         :param client: Binance API client
@@ -159,6 +159,8 @@ class DepthCacheManager(object):
 
         """
         self = DepthCacheManager()
+        if not depth_cache_constructor:
+            depth_cache_constructor = DepthCache
         self._client = client
         self._loop = loop
         self._symbol = symbol
@@ -168,7 +170,7 @@ class DepthCacheManager(object):
         # TODO deque
         self._depth_message_buffer = []
         self._bm = bm
-        self._depth_cache = DepthCache(self._symbol)
+        self._depth_cache = depth_cache_constructor(self._symbol)
         self._refresh_interval = refresh_interval
         self._first_update_after_snapshot = True
         self._logger = logging.getLogger(__name__)
@@ -198,9 +200,9 @@ class DepthCacheManager(object):
         # process bid and asks from the order book
         self._depth_cache.clear()
         for bid in res['bids']:
-            self._depth_cache.add_bid(bid)
+            self._depth_cache.add_bid((float(bid[0]), float(bid[1])))
         for ask in res['asks']:
-            self._depth_cache.add_ask(ask)
+            self._depth_cache.add_ask((float(ask[0]), float(ask[1])))
         await asyncio.sleep(0)
 
         # set a time to refresh the depth cache
@@ -284,8 +286,8 @@ class DepthCacheManager(object):
         self._first_update_after_snapshot = False
 
         # add any bid or ask values
-        msg['pb'] = [self._depth_cache.add_bid(bid) for bid in msg['b']]
-        msg['pa'] = [self._depth_cache.add_ask(ask) for ask in msg['a']]
+        msg['pb'] = [self._depth_cache.add_bid((float(bid[0]), float(bid[1]))) for bid in msg['b']]
+        msg['pa'] = [self._depth_cache.add_ask((float(ask[0]), float(ask[1]))) for ask in msg['a']]
 
         # keeping update time
         self._depth_cache.update_time = msg['E']
