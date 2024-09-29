@@ -4,7 +4,7 @@ import ujson as json
 import logging
 from random import random
 import websockets.asyncio.client as ws
-import websockets.exceptions
+import websockets.exceptions as ex
 import aiosonic.exceptions
 
 from .client import Client
@@ -41,10 +41,10 @@ class ReconnectingWebsocket:
         keep_waiting = True
         ws_url = self._url + self._prefix + self._path
         kwargs = {}
-        if self._path == 'v3' or 'aggTrade' in self._path:
-            # Disable compression for order ws and trade ws for minimal latency. Not sure its useful for the rest.
-            kwargs = {'compression': None}
-        async with ws.connect(ws_url, **kwargs) as socket:
+        # if self._path == 'v3' or 'aggTrade' in self._path:
+        #     # Disable compression for order ws and trade ws for minimal latency. Not sure its useful for the rest.
+        #     kwargs = {'compression': None}
+        async with ws.connect(ws_url, max_queue = (128, 32), compression = None, **kwargs) as socket:
             self._socket = socket
             self._reconnects = 0
             self._messages_in_a_row = 0
@@ -76,7 +76,7 @@ class ReconnectingWebsocket:
                     # Yield every now and then to let new tasks being processed
                     if queue_len > 1 and self._messages_in_a_row % 5 == 0:
                         await asyncio.sleep(0)
-            except websockets.exceptions.ConnectionClosed as e:
+            except ex.ConnectionClosed as e:
                 self._log.info('ws connection closed: %r', e)
                 await self._reconnect()
             except asyncio.CancelledError:
@@ -91,7 +91,7 @@ class ReconnectingWebsocket:
         while self._socket is not None:
             try:
                 await self.send_ping()
-            except websockets.exceptions.ConnectionClosed as ex:
+            except ex.ConnectionClosed as ex:
                 if self._socket is None and ex.code == 1000:
                     # Connection closed successfully
                     return
