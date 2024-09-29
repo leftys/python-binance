@@ -6,7 +6,7 @@ pyOpenSSL==19.0.0
 requests==2.22.0
 service-identity==17.0.0
 Twisted
-websockets
+websockets==13.1
 chardet
 sortedcontainers
 ujson
