@@ -39,6 +39,7 @@ class ReconnectingWebsocket(WSListener):
         self._seq_id = 0
         self.final_frame: RawWsPayload = bytearray()
         self._pongs_since_last_check = None
+        self._missed_pongs = 0
 
         self._connect()
 
@@ -58,7 +59,7 @@ class ReconnectingWebsocket(WSListener):
         except Exception as e:
             self._log.warning(f"Unable to decode msg {self._seq_id} containing {final_frame}: {e}")
         else:
-            asyncio.create_task(self._coro(time, payload))
+            self._loop.create_task(self._coro(time, payload))
 
     async def _run(self):
         ws_url = self._url + self._prefix + self._path
@@ -88,7 +89,10 @@ class ReconnectingWebsocket(WSListener):
         while self._socket is not None:
             try:
                 if self._pongs_since_last_check == 0:
-                    raise ConnectionResetError('Pong timeout')
+                    self._missed_pongs += 1
+                    if self._missed_pongs > 2:
+                        raise ConnectionResetError('Pong timeout')
+                        self._missed_pongs = 0
                 if self._socket.transport is not None:
                     self._pongs_since_last_check = 0
                     self._socket.transport.send_ping()
@@ -150,6 +154,7 @@ class ReconnectingWebsocket(WSListener):
             return
         if frame.msg_type == WSMsgType.PONG:
             self._pongs_since_last_check += 1
+            self._missed_pongs = 0
             return
 
         if self.final_frame:
