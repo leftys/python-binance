@@ -227,7 +227,7 @@ class DepthCacheManager(object):
 
         await self._bm.start_depth_socket(self._symbol, self._depth_event)
 
-    async def _depth_event(self, msg):
+    async def _depth_event(self, time, msg):
         """Handle a depth event
 
         :param msg:

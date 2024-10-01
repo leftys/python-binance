@@ -1,26 +1,33 @@
+from typing import Union
 import asyncio
 import contextlib
-import ujson as json
 import logging
+import msgspec
+import time
 from random import random
-import websockets.asyncio.client as ws
-import websockets.exceptions as ex
-import aiosonic.exceptions
+from picows import WSFrame, WSTransport, WSListener, WSCloseCode, ws_connect, WSMsgType, WSCloseCode
 
 from .client import Client
 from .exceptions import BinanceAPIException
 
+RawWsPayload = bytearray
+PayloadData = dict[str, Union[int, float, str, dict, list]]
+QueuePayload = tuple[int, int, PayloadData]
 
-class ReconnectingWebsocket:
 
+class ReconnectingWebsocket(WSListener):
     MAX_RECONNECTS = 5
     MAX_RECONNECT_SECONDS = 60
     MIN_RECONNECT_WAIT = 0.1
     TIMEOUT = 30
 
+    json_encoder = msgspec.json.Encoder()
+    json_decoder = msgspec.json.Decoder()
+
     def __init__(self, loop, path, coro, url, prefix='ws/'):
         self._loop = loop
         self._log = logging.getLogger(__name__)
+        self._log.setLevel(logging.DEBUG)
         self._path = path
         self._coro = coro
         self._prefix = prefix
@@ -29,6 +36,9 @@ class ReconnectingWebsocket:
         self._ping_loop = None
         self._socket = None
         self._url = url
+        self._seq_id = 0
+        self.final_frame: RawWsPayload = bytearray()
+        self._pongs_since_last_check = None
 
         self._connect()
 
@@ -37,69 +47,57 @@ class ReconnectingWebsocket:
         self._ping_loop = asyncio.ensure_future(self._run_ping_loop(), loop=self._loop)
         self._conn.add_done_callback(self._handle_conn_done)
 
+    def _get_reconnect_wait(self, attempts: int) -> int:
+        expo = 2 ** attempts
+        return round(random() * min(self.MAX_RECONNECT_SECONDS, expo - 1) + 1)
+
+    def _process_frame(self, time: int, final_frame: RawWsPayload) -> None:
+        try:
+            self._seq_id += 1
+            payload = self.json_decoder.decode(final_frame)
+        except Exception as e:
+            self._log.warning(f"Unable to decode msg {self._seq_id} containing {final_frame}: {e}")
+        else:
+            asyncio.create_task(self._coro(time, payload))
+
     async def _run(self):
-        keep_waiting = True
         ws_url = self._url + self._prefix + self._path
-        kwargs = {}
-        # if self._path == 'v3' or 'aggTrade' in self._path:
-        #     # Disable compression for order ws and trade ws for minimal latency. Not sure its useful for the rest.
-        #     kwargs = {'compression': None}
-        async with ws.connect(ws_url, max_queue = (128, 32), compression = None, **kwargs) as socket:
-            self._socket = socket
-            self._reconnects = 0
-            self._messages_in_a_row = 0
-            # self._socket = self._socket.transport.get_extra_info('socket')
-            # self._fd = self._socket.fileno()
-            # import fcntl
-            # fcntl.ioctl(self._fd, 35, 1)
+        try:
+            while True:
+                (_, self._socket) = await ws_connect(lambda: self, ws_url)
+                self._reconnects = 0
+                self._seq_id = 0
 
-            try:
-                while keep_waiting:
-                    queue_len = len(self._socket.recv_messages.frames)
-                    if queue_len == 0:
-                        self._messages_in_a_row = 0
-                    if queue_len > 10 and self._messages_in_a_row == 0:
-                        self._log.info(
-                            'Many messages just arrived, new = %d after = %d already processed on path = %s',
-                            queue_len, self._messages_in_a_row, self._path
-                        )
+                try:
+                    await self._socket.transport.wait_disconnected()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    self._log.warning(f"ws exception: {e}")
 
-                    evt = await self._socket.recv()
-                    self._messages_in_a_row += 1
-                    try:
-                        evt_obj = json.loads(evt)
-                    except ValueError:
-                        self._log.info('error parsing evt json:{}'.format(evt))
-                    else:
-                        await self._coro(evt_obj)
-
-                    # Yield every now and then to let new tasks being processed
-                    if queue_len > 1 and self._messages_in_a_row % 5 == 0:
-                        await asyncio.sleep(0)
-            except ex.ConnectionClosed as e:
-                self._log.info('ws connection closed: %r', e)
                 await self._reconnect()
-            except asyncio.CancelledError:
-                self._log.debug('ws connection cancelled')
-                raise
-            except Exception as e:
-                self._log.warning('ws exception: %r', e)
-                await self._reconnect()
+        except asyncio.CancelledError:
+            self._log.debug('ws connection cancelled')
+            raise
+        except Exception as e:
+            self._log.warning(f'ws exception: {e}')
+            await self._reconnect()
 
     async def _run_ping_loop(self):
         await asyncio.sleep(self.TIMEOUT)
         while self._socket is not None:
             try:
-                await self.send_ping()
-            except ex.ConnectionClosed as ex:
-                if self._socket is None and ex.code == 1000:
-                    # Connection closed successfully
-                    return
+                if self._pongs_since_last_check == 0:
+                    raise ConnectionResetError('Pong timeout')
+                if self._socket.transport is not None:
+                    self._pongs_since_last_check = 0
+                    self._socket.transport.send_ping()
+                else:
+                    await self._reconnect()
             except asyncio.CancelledError:
                 raise
-            except Exception as ex:
-                if self._socket is not None:
-                    self._log.error('Websocket ping failed')
+            except Exception:
+                self._log.exception('Websocket ping failed')
             await asyncio.sleep(self.TIMEOUT)
 
     def _handle_conn_done(self, task: asyncio.Task):
@@ -110,33 +108,22 @@ class ReconnectingWebsocket:
         except Exception:
             self._log.exception('connection finished with exception')
 
-    def _get_reconnect_wait(self, attempts: int) -> int:
-        expo = 2 ** attempts
-        return round(random() * min(self.MAX_RECONNECT_SECONDS, expo - 1) + 1)
-
     async def _reconnect(self):
         await self.cancel()
         self._reconnects += 1
         if self._reconnects < self.MAX_RECONNECTS:
-
-            self._log.info("websocket {} reconnecting {} reconnects left".format(
-                self._path, self.MAX_RECONNECTS - self._reconnects)
-            )
+            self._log.info(f"websocket {self._path} reconnecting {self.MAX_RECONNECTS - self._reconnects} reconnects left")
             reconnect_wait = self._get_reconnect_wait(self._reconnects)
             await asyncio.sleep(reconnect_wait)
             self._connect()
         else:
-            self._log.error('Max reconnections {} reached:'.format(self.MAX_RECONNECTS))
-
-    async def send_ping(self):
-        if self._socket:
-            await self._socket.ping()
+            self._log.error(f'Max reconnections {self.MAX_RECONNECTS} reached')
 
     async def send(self, data):
-        if self._socket:
-            await self._socket.send(json.dumps(data))
+        if self._socket and self._socket.transport:
+            self._socket.transport.send(WSMsgType.TEXT, self.json_encoder.encode(data))
         else:
-            self._log.error('Cannot send data, socket not open yet. Data = %s', data)
+            self._log.error(f'Cannot send data, socket not open yet. Data = {data}')
 
     async def cancel(self):
         if self._conn:
@@ -150,7 +137,36 @@ class ReconnectingWebsocket:
             self._ping_loop.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._ping_loop
+        self.transport.send_close()
+        self.transport.disconnect()
         self._log.debug('Done')
+
+    def on_ws_connected(self, transport: WSTransport):
+        self.transport = transport
+
+    def on_ws_frame(self, transport: WSTransport, frame: WSFrame):
+        if frame.msg_type == WSMsgType.PING:
+            self.transport.send_pong()
+            return
+        if frame.msg_type == WSMsgType.PONG:
+            self._pongs_since_last_check += 1
+            return
+
+        if self.final_frame:
+            self._log.info(f'Concatting frame {self.final_frame} with {frame.get_payload_as_bytes()} fin={frame.fin}')
+        self.final_frame += frame.get_payload_as_memoryview()
+        if frame.fin: # or self.final_frame[-1] == 125: # = }
+            self._process_frame(time.time_ns(), self.final_frame)
+            self.final_frame.clear()
+
+    def on_ws_disconnected(self, transport: WSTransport):
+        asyncio.create_task(self._reconnect())
+
+    def pause_writing(self):
+        pass
+
+    def resume_writing(self):
+        pass
 
 
 class BinanceSocketManager:
