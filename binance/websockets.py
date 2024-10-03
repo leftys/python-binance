@@ -53,19 +53,6 @@ class ReconnectingWebsocket(WSListener):
         expo = 2 ** attempts
         return round(random() * min(self.MAX_RECONNECT_SECONDS, expo - 1) + 1)
 
-    def _process_frame(self, time: int, final_frame: RawWsPayload) -> None:
-        try:
-            self._seq_id += 1
-            payload = self.json_decoder.decode(final_frame)
-        except Exception as e:
-            self._log.warning(f"Unable to decode msg {self._seq_id} containing {final_frame}: {e}")
-        else:
-            # self._loop.create_task(self._coro(time, payload))
-            self.continuation(
-                self._coro(time, payload),
-                None
-            )
-
     def continuation(self, coro: Coroutine, fut: Optional[asyncio.Future]):
         try:
             # In asyncio framework, this either return a future or throws a user exception
@@ -190,8 +177,20 @@ class ReconnectingWebsocket(WSListener):
         if self.final_frame:
             self._log.info(f'Concatting frame {self.final_frame} with {frame.get_payload_as_bytes()} fin={frame.fin}')
         self.final_frame += frame.get_payload_as_memoryview()
-        if frame.fin: # or self.final_frame[-1] == 125: # = }
-            self._process_frame(time.time_ns(), self.final_frame)
+        if frame.fin:
+            time_now = time.time_ns()
+
+            try:
+                self._seq_id += 1
+                payload = self.json_decoder.decode(self.final_frame)
+            except Exception as e:
+                self._log.warning(f"Unable to decode msg {self._seq_id} containing {self.final_frame}: {e}")
+            else:
+                self.continuation(
+                    self._coro(time_now, payload),
+                    None
+                )
+
             self.final_frame.clear()
 
     def on_ws_disconnected(self, transport: WSTransport):
