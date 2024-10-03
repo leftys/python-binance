@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Optional
 import asyncio
 import contextlib
 import logging
@@ -59,7 +59,43 @@ class ReconnectingWebsocket(WSListener):
         except Exception as e:
             self._log.warning(f"Unable to decode msg {self._seq_id} containing {final_frame}: {e}")
         else:
-            self._loop.create_task(self._coro(time, payload))
+            # self._loop.create_task(self._coro(time, payload))
+            self.create_eager_task(self._coro(time, payload))
+
+    def create_eager_task(self, coro): # -> asyncio.Future:
+        # caveat: This is not a proper task starter, cancelling returned future doesn't cancel operation.
+        # The operation will carry on in background
+        # final_fut = asyncio.get_running_loop().create_future()
+
+        def continuation(fut: Optional[asyncio.Future]):
+            try:
+                # In asyncio framework, this either return a future or throws a user exception
+                # or throws StopIteration with return value
+                next_fut: asyncio.Future = coro.send(fut)
+                while next_fut is None:
+                    # This happens eg. on asyncio.sleep(0) in coro
+                    # self._log.warning(f'coro.send returned None! path={self._path} coro={coro}')
+                    next_fut = coro.send(fut)
+                else:
+                    next_fut.add_done_callback(continuation)
+            except StopIteration as ex:
+                pass
+                # if not final_fut.done():
+                #     final_fut.set_result(ex.value)
+            except asyncio.CancelledError as ex:
+                self._log.warning("Cannot cancel eager task")
+                # if not final_fut.done():
+                #     final_fut.set_exception(ex)
+            except Exception as ex:
+                self._log.exception(f"Exception in eager task: {ex}")
+                raise
+                # if not final_fut.done():
+                #     final_fut.set_exception(ex)
+
+        # When first (just started) coro.send() is called, None must be passed as an argument,
+        # otherwise a future that was passed as a continuation argument
+        continuation(None)
+        # return final_fut
 
     async def _run(self):
         ws_url = self._url + self._prefix + self._path
