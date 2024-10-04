@@ -5,6 +5,7 @@ import contextlib
 import logging
 import msgspec
 import time
+import collections
 from random import random
 from picows import WSFrame, WSTransport, WSListener, WSCloseCode, ws_connect, WSMsgType, WSCloseCode
 
@@ -41,6 +42,8 @@ class ReconnectingWebsocket(WSListener):
         self.final_frame: RawWsPayload = bytearray()
         self._pongs_since_last_check = None
         self._missed_pongs = 0
+        self._data = collections.deque()
+        self._has_data = asyncio.Event()
 
         self._connect()
 
@@ -54,15 +57,24 @@ class ReconnectingWebsocket(WSListener):
         return round(random() * min(self.MAX_RECONNECT_SECONDS, expo - 1) + 1)
 
     def continuation(self, coro: Coroutine, fut: Optional[asyncio.Future]):
+        n = 0
         try:
             # In asyncio framework, this either return a future or throws a user exception
             # or throws StopIteration with return value
             next_fut: asyncio.Future = coro.send(fut)
             while next_fut is None:
                 # This happens eg. on asyncio.sleep(0) in coro
-                # self._log.warning(f'coro.send returned None! path={self._path} coro={coro}')
+                self._log.warning(f'coro.send returned None! path={self._path[:15]} fut={fut} n={n}')
+                n += 1
+
+                # Requires our uvloop fork!
+                loop_len = self._loop._ready_len
+                for i in range(loop_len):
+                    self._loop._on_idle()
+
                 next_fut = coro.send(fut)
             else:
+                assert False
                 next_fut.add_done_callback(functools.partial(self.continuation, coro))
         except StopIteration as ex:
             pass
@@ -86,14 +98,20 @@ class ReconnectingWebsocket(WSListener):
                 self._reconnects = 0
                 self._seq_id = 0
 
-                try:
-                    await self._socket.transport.wait_disconnected()
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    self._log.warning(f"ws exception: {e}")
+                while True:
+                    await self._has_data.wait()
+                    self._has_data.clear()
+                    while self._data:
+                        await self._coro(*self._data.popleft())
 
-                await self._reconnect()
+                # try:
+                #     await self._socket.transport.wait_disconnected()
+                # except asyncio.CancelledError:
+                #     raise
+                # except Exception as e:
+                #     self._log.warning(f"ws exception: {e}")
+
+                # await self._reconnect()
         except asyncio.CancelledError:
             self._log.debug('ws connection cancelled')
             raise
@@ -152,12 +170,14 @@ class ReconnectingWebsocket(WSListener):
             self._conn.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._conn
+            self._conn = None
         self._socket = None
         if self._ping_loop:
             self._log.debug('Cancelling ping loop')
             self._ping_loop.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._ping_loop
+            self._ping_loop = None
         self.transport.send_close()
         self.transport.disconnect()
         self._log.debug('Done')
@@ -186,15 +206,18 @@ class ReconnectingWebsocket(WSListener):
             except Exception as e:
                 self._log.warning(f"Unable to decode msg {self._seq_id} containing {self.final_frame}: {e}")
             else:
-                self.continuation(
-                    self._coro(time_now, payload),
-                    None
-                )
+                self._data.append((time_now, payload))
+                self._has_data.set()
+                # self.continuation(
+                #     self._coro(time_now, payload),
+                #     None
+                # )
 
             self.final_frame.clear()
 
     def on_ws_disconnected(self, transport: WSTransport):
-        asyncio.create_task(self._reconnect())
+        if self._conn is not None:
+            asyncio.create_task(self._reconnect())
 
     def pause_writing(self):
         pass
