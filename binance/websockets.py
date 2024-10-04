@@ -43,7 +43,7 @@ class ReconnectingWebsocket(WSListener):
         self._pongs_since_last_check = None
         self._missed_pongs = 0
         self._data = collections.deque()
-        self._has_data = asyncio.Event()
+        self._has_data = loop.create_future()
 
         self._connect()
 
@@ -99,8 +99,8 @@ class ReconnectingWebsocket(WSListener):
                 self._seq_id = 0
 
                 while True:
-                    await self._has_data.wait()
-                    self._has_data.clear()
+                    await self._has_data
+                    self._has_data = self._loop.create_future()
                     while self._data:
                         await self._coro(*self._data.popleft())
 
@@ -207,7 +207,8 @@ class ReconnectingWebsocket(WSListener):
                 self._log.warning(f"Unable to decode msg {self._seq_id} containing {self.final_frame}: {e}")
             else:
                 self._data.append((time_now, payload))
-                self._has_data.set()
+                if not self._has_data.done():
+                    self._has_data.set_result(None)
                 # self.continuation(
                 #     self._coro(time_now, payload),
                 #     None
