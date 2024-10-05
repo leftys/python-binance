@@ -187,7 +187,7 @@ class ReconnectingWebsocket(WSListener):
 
     def on_ws_frame(self, transport: WSTransport, frame: WSFrame):
         if frame.msg_type == WSMsgType.PING:
-            self.transport.send_pong()
+            self.transport.send_pong(frame.get_payload_as_bytes())
             return
         if frame.msg_type == WSMsgType.PONG:
             self._pongs_since_last_check += 1
