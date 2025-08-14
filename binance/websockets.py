@@ -632,7 +632,7 @@ class BinanceSocketManager:
         """
         return self._start_socket('!bookTicker', callback)
 
-    async def start_multiplex_socket(self, streams, coro):
+    async def start_multiplex_socket(self, streams, coro, suffix = ''):
         """Start a multiplexed socket using a list of socket names.
         User stream sockets can not be included.
 
@@ -652,7 +652,7 @@ class BinanceSocketManager:
         Message Format - see Binance API docs for all types
 
         """
-        path = 'streams={}'.format('/'.join(streams))
+        path = 'streams={}'.format('/'.join(streams)) + suffix
         await self._start_socket(path, coro, prefix = 'stream?')
         return path
 
