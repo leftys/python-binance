@@ -25,7 +25,7 @@ class BaseClient(ABC):
     INTERNAL_API_URL = 'https://www.binance.{}/bapi'
     WEBSITE_URL = 'https://www.binance.{}'
     FUTURES_URL = 'https://fapi.binance.{}/fapi'
-    PUBLIC_API_VERSION = 'v1'
+    PUBLIC_API_VERSION = 'v3'
     PRIVATE_API_VERSION = 'v3'
     WITHDRAW_API_VERSION = 'v3'
     MARGIN_API_VERSION = 'v1'
